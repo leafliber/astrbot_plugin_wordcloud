@@ -47,8 +47,18 @@ class SegEngine:
         self._seg = None
         self._stopwords: set = set()
         self._group_segs: dict = {}
+        self._ready: bool = False
+        self._engine_type: str = "none"
 
-    def _init_seg(self, user_dict: Optional[str] = None):
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+    @property
+    def engine_type(self) -> str:
+        return self._engine_type
+
+    def _init_pkuseg(self, user_dict: Optional[str] = None):
         import spacy_pkuseg as pkuseg
 
         kwargs = {
@@ -60,17 +70,46 @@ class SegEngine:
             kwargs["user_dict"] = dict_path
         return pkuseg.pkuseg(**kwargs)
 
+    def _init_jieba(self, user_dict: Optional[str] = None):
+        import jieba
+        import jieba.posseg
+
+        dict_path = user_dict or self._config.user_dict_path
+        if dict_path and os.path.isfile(dict_path):
+            jieba.load_userdict(dict_path)
+        return jieba.posseg
+
     def initialize(self):
-        self._seg = self._init_seg()
+        try:
+            self._seg = self._init_pkuseg()
+            self._engine_type = "pkuseg"
+            logger.info(f"[WordCloud] pkuseg 初始化成功, model={self._config.pkuseg_model}")
+        except Exception as e:
+            logger.warning(f"[WordCloud] pkuseg 初始化失败: {e}，尝试退化到 jieba 分词")
+            try:
+                self._seg = self._init_jieba()
+                self._engine_type = "jieba"
+                logger.info("[WordCloud] 已退化到 jieba 分词引擎")
+            except Exception as e2:
+                logger.error(f"[WordCloud] jieba 初始化也失败: {e2}，分词引擎不可用")
+                self._seg = None
+                self._engine_type = "none"
+                self._stopwords = _load_stopwords(self._config.stopwords_path)
+                self._ready = True
+                return
+
         self._stopwords = _load_stopwords(self._config.stopwords_path)
-        logger.info(f"[WordCloud] SegEngine initialized, model={self._config.pkuseg_model}")
+        self._ready = True
 
     def get_seg(self, group_key: Optional[str] = None):
         if group_key is None:
             return self._seg
         if group_key not in self._group_segs:
             dict_path = self._build_merged_dict(group_key)
-            self._group_segs[group_key] = self._init_seg(user_dict=dict_path)
+            if self._engine_type == "pkuseg":
+                self._group_segs[group_key] = self._init_pkuseg(user_dict=dict_path)
+            else:
+                self._group_segs[group_key] = self._init_jieba(user_dict=dict_path)
         return self._group_segs[group_key]
 
     def _build_merged_dict(self, group_key: str) -> Optional[str]:
@@ -97,7 +136,12 @@ class SegEngine:
 
     def cut(self, text: str, group_key: Optional[str] = None) -> list[tuple[str, str]]:
         seg = self.get_seg(group_key)
-        return seg.cut(text)
+        if seg is None:
+            return []
+        result = seg.cut(text)
+        if self._engine_type == "jieba":
+            return [(w.word, w.flag) for w in result]
+        return result
 
     def terminate(self):
         self._group_segs.clear()

@@ -48,18 +48,26 @@ class WordCloudPlugin(Star):
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._mr_api = None
         self._schedule_task: Optional[asyncio.Task] = None
+        self._api_retry_count: int = 0
+        self._api_max_retry: int = 5
 
     async def _get_recorder_api(self):
-        if self._mr_api is None:
+        if self._mr_api is None and self._api_retry_count < self._api_max_retry:
             try:
                 star_meta = self.context.get_registered_star("astrbot_plugin_message_recorder")
+                logger.debug(f"[WordCloud] get_registered_star 返回: {star_meta}")
+                
                 if star_meta is None:
-                    logger.warning("[WordCloud] 未找到 message_recorder 插件")
+                    self._api_retry_count += 1
+                    logger.warning(f"[WordCloud] 未找到 message_recorder 插件 (重试 {self._api_retry_count}/{self._api_max_retry})")
                     return None
                 
                 plugin_instance = getattr(star_meta, "star_cls", None)
+                logger.debug(f"[WordCloud] star_cls: {plugin_instance}")
+                
                 if plugin_instance is None:
-                    logger.warning("[WordCloud] message_recorder 插件实例为 None，可能未激活")
+                    self._api_retry_count += 1
+                    logger.warning(f"[WordCloud] message_recorder 插件实例为 None (重试 {self._api_retry_count}/{self._api_max_retry})")
                     return None
                 
                 if hasattr(plugin_instance, "get_api"):
@@ -67,31 +75,54 @@ class WordCloudPlugin(Star):
                     if self._mr_api:
                         logger.info("[WordCloud] 已获取 message_recorder API")
                     else:
-                        logger.warning("[WordCloud] message_recorder 插件未正确初始化")
+                        self._api_retry_count += 1
+                        logger.warning(f"[WordCloud] message_recorder 插件未正确初始化 (重试 {self._api_retry_count}/{self._api_max_retry})")
                 else:
-                    logger.warning("[WordCloud] 插件实例没有 get_api 方法")
+                    self._api_retry_count += 1
+                    logger.warning(f"[WordCloud] 插件实例没有 get_api 方法 (重试 {self._api_retry_count}/{self._api_max_retry})")
                     
             except Exception as e:
-                logger.warning(f"[WordCloud] 获取 message_recorder API 失败: {e}")
+                self._api_retry_count += 1
+                logger.warning(f"[WordCloud] 获取 message_recorder API 失败: {e} (重试 {self._api_retry_count}/{self._api_max_retry})")
         return self._mr_api
 
+    async def _bg_init_recorder_api(self):
+        for i in range(self._api_max_retry):
+            if self._mr_api is not None:
+                break
+            await self._get_recorder_api()
+            if self._mr_api is None and i < self._api_max_retry - 1:
+                await asyncio.sleep(2)
+        if self._mr_api is None:
+            logger.error("[WordCloud] 无法连接 message_recorder 插件，请确保已安装并启用")
+
     async def initialize(self):
+        asyncio.create_task(self._bg_init_seg_engine())
+        asyncio.create_task(self._bg_init_recorder_api())
+
+        logger.info("[WordCloud] 插件初始化完成（后台加载中）")
+        self._schedule_task = asyncio.create_task(self._schedule_loop())
+
+    async def _bg_init_seg_engine(self):
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(self._executor, self._seg_engine.initialize)
+            logger.info(f"[WordCloud] 分词引擎就绪: {self._seg_engine.engine_type}")
         except Exception as e:
-            logger.error(f"[WordCloud] pkuseg 初始化失败: {e}")
-            return
-
-        await self._get_recorder_api()
-        logger.info("[WordCloud] 插件初始化完成")
-        self._schedule_task = asyncio.create_task(self._schedule_loop())
+            logger.error(f"[WordCloud] 分词引擎初始化失败: {e}")
 
     async def terminate(self):
         if self._schedule_task:
             self._schedule_task.cancel()
         self._seg_engine.terminate()
         self._executor.shutdown(wait=False)
+
+    def _check_ready(self, event: AstrMessageEvent) -> Optional[str]:
+        if not self._seg_engine.ready:
+            return "分词引擎正在加载中，请稍后再试"
+        if self._seg_engine.engine_type == "none":
+            return "分词引擎不可用，请联系管理员"
+        return None
 
     def _get_group_key(self, event: AstrMessageEvent) -> Optional[str]:
         group_id = event.message_obj.group_id
@@ -155,6 +186,10 @@ class WordCloudPlugin(Star):
         colormap_override: Optional[str] = None,
         title_suffix: str = "",
     ):
+        if not self._seg_engine.ready:
+            yield event.plain_result("分词引擎正在加载中，请稍后再试")
+            return
+
         if not messages:
             yield event.plain_result(f"{period_name}暂无消息记录，无法生成词云")
             return
@@ -316,6 +351,9 @@ class WordCloudPlugin(Star):
     @filter.command("今日排名")
     async def today_ranking(self, event: AstrMessageEvent):
         '''查看今日发言排名'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "today", group_id)
         ranking = compute_ranking(messages, self._config.ranking_limit, self._config.ranking_show_percentage)
@@ -324,6 +362,9 @@ class WordCloudPlugin(Star):
     @filter.command("本周排名")
     async def week_ranking(self, event: AstrMessageEvent):
         '''查看本周发言排名'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "this_week", group_id)
         ranking = compute_ranking(messages, self._config.ranking_limit, self._config.ranking_show_percentage)
@@ -332,6 +373,9 @@ class WordCloudPlugin(Star):
     @filter.command("本月排名")
     async def month_ranking(self, event: AstrMessageEvent):
         '''查看本月发言排名'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "this_month", group_id)
         ranking = compute_ranking(messages, self._config.ranking_limit, self._config.ranking_show_percentage)
@@ -340,6 +384,9 @@ class WordCloudPlugin(Star):
     @filter.command("今日词性分析")
     async def today_pos_analysis(self, event: AstrMessageEvent):
         '''查看今日词性分布分析'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "today", group_id)
@@ -356,6 +403,9 @@ class WordCloudPlugin(Star):
     @filter.command("本周词性分析")
     async def week_pos_analysis(self, event: AstrMessageEvent):
         '''查看本周词性分布分析'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "this_week", group_id)
@@ -372,6 +422,9 @@ class WordCloudPlugin(Star):
     @filter.command("本月词性分析")
     async def month_pos_analysis(self, event: AstrMessageEvent):
         '''查看本月词性分布分析'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "this_month", group_id)
@@ -388,6 +441,9 @@ class WordCloudPlugin(Star):
     @filter.command("今日热词")
     async def today_trend(self, event: AstrMessageEvent):
         '''查看今日热词趋势'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         curr_messages = await self._get_messages(event, "today", group_id)
@@ -418,6 +474,9 @@ class WordCloudPlugin(Star):
     @filter.command("本周热词")
     async def week_trend(self, event: AstrMessageEvent):
         '''查看本周热词趋势'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         curr_messages = await self._get_messages(event, "this_week", group_id)
@@ -448,6 +507,9 @@ class WordCloudPlugin(Star):
     @filter.command("本月热词")
     async def month_trend(self, event: AstrMessageEvent):
         '''查看本月热词趋势'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         curr_messages = await self._get_messages(event, "this_month", group_id)
@@ -478,6 +540,9 @@ class WordCloudPlugin(Star):
     @filter.command("群聊画像")
     async def group_profile(self, event: AstrMessageEvent):
         '''查看群聊语言画像'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
 
@@ -505,6 +570,9 @@ class WordCloudPlugin(Star):
     @filter.command("我的风格")
     async def my_style(self, event: AstrMessageEvent):
         '''查看个人语言风格'''
+        err = self._check_ready(event)
+        if err:
+            yield event.plain_result(err); return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         sender_id = event.message_obj.sender.user_id if event.message_obj.sender else ""

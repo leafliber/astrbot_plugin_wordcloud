@@ -138,10 +138,14 @@ class SegEngine:
         seg = self.get_seg(group_key)
         if seg is None:
             return []
-        result = seg.cut(text)
-        if self._engine_type == "jieba":
-            return [(w.word, w.flag) for w in result]
-        return result
+        try:
+            result = seg.cut(text)
+            if self._engine_type == "jieba":
+                return [(w.word, w.flag) for w in result]
+            return list(result)
+        except Exception as e:
+            logger.error(f"[WordCloud] 分词失败: {e}")
+            return []
 
     def terminate(self):
         self._group_segs.clear()
@@ -173,8 +177,14 @@ def analyse_message(
                 continue
             if word in stopwords:
                 continue
-            if not _CHINESE_PATTERN.search(word) and len(word) < min_len:
-                continue
+            
+            has_chinese = bool(_CHINESE_PATTERN.search(word))
+            
+            if not has_chinese:
+                if len(word) > 20 or _URL_PATTERN.search(word):
+                    continue
+                if word.isdigit() or word.replace('.', '').replace('-', '').isdigit():
+                    continue
 
             if pos_filter is not None:
                 if not pos.startswith(pos_filter):

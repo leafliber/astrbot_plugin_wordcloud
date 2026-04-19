@@ -203,7 +203,6 @@ def generate_wordcloud(
     config: Config,
     colormap: Optional[str] = None,
     mask_image: Optional[np.ndarray] = None,
-    title: Optional[str] = None,
 ) -> Optional[bytes]:
     if not word_counter:
         return None
@@ -236,17 +235,6 @@ def generate_wordcloud(
         return None
 
     img = wc.to_image()
-    if title:
-        from PIL import ImageDraw, ImageFont
-        draw = ImageDraw.Draw(img)
-        try:
-            if font_path:
-                title_font = ImageFont.truetype(font_path, 28)
-            else:
-                title_font = ImageFont.load_default()
-        except Exception:
-            title_font = ImageFont.load_default()
-        draw.text((10, 10), title, fill="black", font=title_font)
 
     import io
     buf = io.BytesIO()

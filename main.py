@@ -3,7 +3,6 @@ import os
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -31,6 +30,41 @@ from wordcloud_core.mask_manager import MaskManager
 from wordcloud_core.scheduler import add_schedule, remove_schedule, get_all_schedules
 
 
+_TIME_KEYWORDS = {
+    "今日": ("today", "今日"), "今天": ("today", "今日"),
+    "昨日": ("yesterday", "昨日"), "昨天": ("yesterday", "昨日"),
+    "本周": ("this_week", "本周"), "这周": ("this_week", "本周"),
+    "上周": ("last_week", "上周"),
+    "本月": ("this_month", "本月"), "这个月": ("this_month", "本月"),
+    "上月": ("last_month", "上月"), "上个月": ("last_month", "上月"),
+    "年度": ("this_year", "今年"), "今年": ("this_year", "今年"),
+}
+
+_MR_TIME_MAP = {
+    "today": "today",
+    "yesterday": "yesterday",
+    "this_week": "week",
+    "last_week": None,
+    "this_month": "month",
+    "last_month": None,
+    "this_year": None,
+}
+
+_POS_KEYWORDS = {
+    "名词": ("n", "名词"),
+    "动词": ("v", "动词"),
+    "形容词": ("a", "形容词"),
+    "副词": ("d", "副词"),
+}
+
+_COLORMAP_MAP = {
+    "n": "pos_noun_colormap",
+    "v": "pos_verb_colormap",
+    "a": "pos_adj_colormap",
+    "d": "pos_adv_colormap",
+}
+
+
 @register(
     name="astrbot_plugin_wordcloud",
     desc="群聊词云生成插件，基于 pkuseg 分词与词性标注",
@@ -38,16 +72,6 @@ from wordcloud_core.scheduler import add_schedule, remove_schedule, get_all_sche
     version="0.1.0",
 )
 class WordCloudPlugin(Star):
-    _TIME_KEYWORD_MAP = {
-        "today": "today",
-        "yesterday": "yesterday",
-        "this_week": "week",
-        "last_week": None,
-        "this_month": "month",
-        "last_month": None,
-        "this_year": None,
-    }
-
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self._raw_config = config
@@ -60,17 +84,6 @@ class WordCloudPlugin(Star):
         self._schedule_task: Optional[asyncio.Task] = None
         self._api_retry_count: int = 0
         self._api_max_retry: int = 5
-
-    @asynccontextmanager
-    async def _event_context(self, event: AstrMessageEvent):
-        try:
-            yield
-        finally:
-            event.stop_event()
-
-    async def _reply(self, event: AstrMessageEvent, message: str):
-        event.stop_event()
-        return event.plain_result(message)
 
     async def _reply_yield(self, event: AstrMessageEvent, message: str):
         event.stop_event()
@@ -94,8 +107,7 @@ class WordCloudPlugin(Star):
         return f"{platform}-{group_id}"
 
     def _require_group(self, event: AstrMessageEvent) -> Optional[str]:
-        group_key = self._get_group_key(event)
-        if not group_key:
+        if not self._get_group_key(event):
             return "仅限群聊使用"
         return None
 
@@ -103,35 +115,24 @@ class WordCloudPlugin(Star):
         if self._mr_api is None and self._api_retry_count < self._api_max_retry:
             try:
                 star_meta = self.context.get_registered_star("astrbot_plugin_message_recorder")
-                logger.debug(f"[WordCloud] get_registered_star 返回: {star_meta}")
-
                 if star_meta is None:
                     self._api_retry_count += 1
-                    logger.warning(f"[WordCloud] 未找到 message_recorder 插件 (重试 {self._api_retry_count}/{self._api_max_retry})")
                     return None
-
                 plugin_instance = getattr(star_meta, "star_cls", None)
-                logger.debug(f"[WordCloud] star_cls: {plugin_instance}")
-
                 if plugin_instance is None:
                     self._api_retry_count += 1
-                    logger.warning(f"[WordCloud] message_recorder 插件实例为 None (重试 {self._api_retry_count}/{self._api_max_retry})")
                     return None
-
                 if hasattr(plugin_instance, "get_api"):
                     self._mr_api = plugin_instance.get_api()
                     if self._mr_api:
                         logger.info("[WordCloud] 已获取 message_recorder API")
                     else:
                         self._api_retry_count += 1
-                        logger.warning(f"[WordCloud] message_recorder 插件未正确初始化 (重试 {self._api_retry_count}/{self._api_max_retry})")
                 else:
                     self._api_retry_count += 1
-                    logger.warning(f"[WordCloud] 插件实例没有 get_api 方法 (重试 {self._api_retry_count}/{self._api_max_retry})")
-
             except Exception as e:
                 self._api_retry_count += 1
-                logger.warning(f"[WordCloud] 获取 message_recorder API 失败: {e} (重试 {self._api_retry_count}/{self._api_max_retry})")
+                logger.warning(f"[WordCloud] 获取 message_recorder API 失败: {e}")
         return self._mr_api
 
     async def _bg_init_recorder_api(self):
@@ -174,27 +175,44 @@ class WordCloudPlugin(Star):
         api = await self._get_recorder_api()
         if api is None:
             return []
-
-        mr_time = self._TIME_KEYWORD_MAP.get(time_keyword)
+        mr_time = _MR_TIME_MAP.get(time_keyword)
         kwargs: dict = {"limit": 50000}
-
         if mr_time:
             kwargs["time"] = mr_time
         else:
             start_time, end_time = get_time_range(time_keyword)
             kwargs["start_time"] = start_time
             kwargs["end_time"] = end_time
-
         if group_id:
             kwargs["group_id"] = group_id
         if sender_id:
             kwargs["sender_id"] = sender_id
-
         try:
             return await api.query(**kwargs)
         except Exception as e:
             logger.error(f"[WordCloud] 获取消息失败: {e}")
             return []
+
+    def _parse_args(self, text: str) -> dict:
+        args = text.split()
+        result = {
+            "time_kw": "today",
+            "period_name": "今日",
+            "action": "wordcloud",
+            "pos_filter": None,
+            "pos_name": None,
+            "extra_args": [],
+        }
+        for arg in args:
+            if arg in _TIME_KEYWORDS:
+                result["time_kw"], result["period_name"] = _TIME_KEYWORDS[arg]
+            elif arg in _POS_KEYWORDS:
+                result["pos_filter"], result["pos_name"] = _POS_KEYWORDS[arg]
+            elif arg in ("排名", "词性", "热词", "画像", "我的", "词典", "定时", "形状"):
+                result["action"] = arg
+            elif arg in ("添加", "删除", "查看", "开启", "关闭", "设置"):
+                result["extra_args"].append(arg)
+        return result
 
     async def _send_wordcloud(
         self,
@@ -203,48 +221,41 @@ class WordCloudPlugin(Star):
         period_name: str,
         group_key: Optional[str] = None,
         pos_filter: Optional[str] = None,
-        colormap_override: Optional[str] = None,
-        title_suffix: str = "",
+        pos_name: Optional[str] = None,
     ):
         err = self._check_ready()
         if err:
             async for r in self._reply_yield(event, err):
                 yield r
             return
-
         if not messages:
             async for r in self._reply_yield(event, f"{period_name}暂无消息记录"):
                 yield r
             return
-
         loop = asyncio.get_event_loop()
         word_counter = await loop.run_in_executor(
             self._executor,
             lambda: analyse_message(messages, self._seg_engine, self._config, group_key, pos_filter),
         )
-
         if not word_counter:
             async for r in self._reply_yield(event, f"{period_name}有效词语不足"):
                 yield r
             return
-
         mask = self._mask_manager.get_mask(group_key)
-        title = f"{period_name}{title_suffix}词云" if title_suffix else f"{period_name}词云"
-
+        colormap = None
+        if pos_filter and pos_filter in _COLORMAP_MAP:
+            colormap = getattr(self._config, _COLORMAP_MAP[pos_filter], None)
         image_data = await loop.run_in_executor(
             self._executor,
-            lambda: generate_wordcloud(word_counter, self._config, colormap_override, mask, title),
+            lambda: generate_wordcloud(word_counter, self._config, colormap, mask),
         )
-
         if not image_data:
             async for r in self._reply_yield(event, "词云生成失败"):
                 yield r
             return
-
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             f.write(image_data)
             temp_path = f.name
-
         try:
             umo = event.unified_msg_origin
             chain = MessageChain().file_image(temp_path)
@@ -256,54 +267,32 @@ class WordCloudPlugin(Star):
                 os.unlink(temp_path)
             except OSError:
                 pass
-
         async for r in self._reply_yield(event, ""):
             yield r
 
-    async def _wordcloud_command(
-        self,
-        event: AstrMessageEvent,
-        time_keyword: str,
-        period_name: str,
-    ):
+    async def _do_wordcloud(self, event: AstrMessageEvent, args: dict):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
-        messages = await self._get_messages(event, time_keyword, group_id)
-        async for result in self._send_wordcloud(event, messages, period_name, group_key):
-            yield result
-
-    async def _pos_wordcloud_command(
-        self,
-        event: AstrMessageEvent,
-        pos_filter: str,
-        title_suffix: str,
-    ):
-        group_key = self._get_group_key(event)
-        group_id = event.message_obj.group_id or None
-        colormap = getattr(self._config, f"pos_{pos_filter}_colormap", None) if len(pos_filter) == 1 else None
-        if colormap is None and len(pos_filter) == 1:
-            colormap_map = {"n": self._config.pos_noun_colormap, "v": self._config.pos_verb_colormap, "a": self._config.pos_adj_colormap, "d": self._config.pos_adv_colormap}
-            colormap = colormap_map.get(pos_filter)
-        messages = await self._get_messages(event, "today", group_id)
+        messages = await self._get_messages(event, args["time_kw"], group_id)
         async for result in self._send_wordcloud(
-            event, messages, "今日", group_key,
-            pos_filter=pos_filter, colormap_override=colormap, title_suffix=title_suffix,
+            event, messages, args["period_name"], group_key,
+            pos_filter=args["pos_filter"], pos_name=args["pos_name"],
         ):
             yield result
 
-    async def _ranking_command(self, event: AstrMessageEvent, time_keyword: str, period_name: str):
+    async def _do_ranking(self, event: AstrMessageEvent, args: dict):
         err = self._check_ready()
         if err:
             async for r in self._reply_yield(event, err):
                 yield r
             return
         group_id = event.message_obj.group_id or None
-        messages = await self._get_messages(event, time_keyword, group_id)
+        messages = await self._get_messages(event, args["time_kw"], group_id)
         ranking = compute_ranking(messages, self._config.ranking_limit, self._config.ranking_show_percentage)
-        async for r in self._reply_yield(event, format_ranking(ranking, period_name)):
+        async for r in self._reply_yield(event, format_ranking(ranking, args["period_name"])):
             yield r
 
-    async def _pos_analysis_command(self, event: AstrMessageEvent, time_keyword: str, period_name: str):
+    async def _do_pos_analysis(self, event: AstrMessageEvent, args: dict):
         err = self._check_ready()
         if err:
             async for r in self._reply_yield(event, err):
@@ -311,9 +300,9 @@ class WordCloudPlugin(Star):
             return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
-        messages = await self._get_messages(event, time_keyword, group_id)
+        messages = await self._get_messages(event, args["time_kw"], group_id)
         if not messages:
-            async for r in self._reply_yield(event, f"{period_name}暂无消息记录"):
+            async for r in self._reply_yield(event, f"{args['period_name']}暂无消息记录"):
                 yield r
             return
         loop = asyncio.get_event_loop()
@@ -321,10 +310,10 @@ class WordCloudPlugin(Star):
             self._executor,
             lambda: analyze_pos_distribution(messages, self._seg_engine, self._config, group_key),
         )
-        async for r in self._reply_yield(event, format_pos_report(pos_dist, period_name)):
+        async for r in self._reply_yield(event, format_pos_report(pos_dist, args["period_name"])):
             yield r
 
-    async def _trend_command(self, event: AstrMessageEvent, curr_kw: str, prev_kw: str, curr_name: str, prev_name: str):
+    async def _do_trend(self, event: AstrMessageEvent, args: dict):
         err = self._check_ready()
         if err:
             async for r in self._reply_yield(event, err):
@@ -332,14 +321,24 @@ class WordCloudPlugin(Star):
             return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
-        curr_messages = await self._get_messages(event, curr_kw, group_id)
+        time_kw = args["time_kw"]
+        period_name = args["period_name"]
+        prev_map = {
+            "today": ("yesterday", "昨日"),
+            "yesterday": ("today", "今日"),
+            "this_week": ("last_week", "上周"),
+            "last_week": ("this_week", "本周"),
+            "this_month": ("last_month", "上月"),
+            "last_month": ("this_month", "本月"),
+            "this_year": ("last_month", "上月"),
+        }
+        prev_kw, prev_name = prev_map.get(time_kw, ("last_month", "上月"))
+        curr_messages = await self._get_messages(event, time_kw, group_id)
         prev_messages = await self._get_messages(event, prev_kw, group_id)
-
         if not curr_messages and not prev_messages:
             async for r in self._reply_yield(event, "暂无足够数据生成热词趋势"):
                 yield r
             return
-
         loop = asyncio.get_event_loop()
         freq_curr = await loop.run_in_executor(
             self._executor,
@@ -349,122 +348,16 @@ class WordCloudPlugin(Star):
             self._executor,
             lambda: analyse_message(prev_messages, self._seg_engine, self._config, group_key),
         )
-
         trend = compute_trend(
             freq_curr, freq_prev,
             threshold=self._config.trend_threshold,
             emerging_limit=self._config.trend_emerging_limit,
             declining_limit=self._config.trend_declining_limit,
         )
-        async for r in self._reply_yield(event, format_trend_report(trend, curr_name, prev_name)):
+        async for r in self._reply_yield(event, format_trend_report(trend, period_name, prev_name)):
             yield r
 
-    @filter.command("今日词云")
-    async def today_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._wordcloud_command(event, "today", "今日"):
-            yield result
-
-    @filter.command("昨日词云")
-    async def yesterday_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._wordcloud_command(event, "yesterday", "昨日"):
-            yield result
-
-    @filter.command("本周词云")
-    async def week_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._wordcloud_command(event, "this_week", "本周"):
-            yield result
-
-    @filter.command("上周词云")
-    async def last_week_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._wordcloud_command(event, "last_week", "上周"):
-            yield result
-
-    @filter.command("本月词云")
-    async def month_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._wordcloud_command(event, "this_month", "本月"):
-            yield result
-
-    @filter.command("上月词云")
-    async def last_month_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._wordcloud_command(event, "last_month", "上月"):
-            yield result
-
-    @filter.command("年度词云")
-    async def year_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._wordcloud_command(event, "this_year", "今年"):
-            yield result
-
-    @filter.command_group("词云")
-    def wordcloud_group(self):
-        pass
-
-    @wordcloud_group.command("名词")
-    async def noun_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._pos_wordcloud_command(event, "n", "名词"):
-            yield result
-
-    @wordcloud_group.command("动词")
-    async def verb_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._pos_wordcloud_command(event, "v", "动词"):
-            yield result
-
-    @wordcloud_group.command("形容词")
-    async def adj_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._pos_wordcloud_command(event, "a", "形容词"):
-            yield result
-
-    @wordcloud_group.command("副词")
-    async def adv_wordcloud(self, event: AstrMessageEvent):
-        async for result in self._pos_wordcloud_command(event, "d", "副词"):
-            yield result
-
-    @filter.command("今日排名")
-    async def today_ranking(self, event: AstrMessageEvent):
-        async for result in self._ranking_command(event, "today", "今日"):
-            yield result
-
-    @filter.command("本周排名")
-    async def week_ranking(self, event: AstrMessageEvent):
-        async for result in self._ranking_command(event, "this_week", "本周"):
-            yield result
-
-    @filter.command("本月排名")
-    async def month_ranking(self, event: AstrMessageEvent):
-        async for result in self._ranking_command(event, "this_month", "本月"):
-            yield result
-
-    @filter.command("今日词性分析")
-    async def today_pos_analysis(self, event: AstrMessageEvent):
-        async for result in self._pos_analysis_command(event, "today", "今日"):
-            yield result
-
-    @filter.command("本周词性分析")
-    async def week_pos_analysis(self, event: AstrMessageEvent):
-        async for result in self._pos_analysis_command(event, "this_week", "本周"):
-            yield result
-
-    @filter.command("本月词性分析")
-    async def month_pos_analysis(self, event: AstrMessageEvent):
-        async for result in self._pos_analysis_command(event, "this_month", "本月"):
-            yield result
-
-    @filter.command("今日热词")
-    async def today_trend(self, event: AstrMessageEvent):
-        async for result in self._trend_command(event, "today", "yesterday", "今日", "昨日"):
-            yield result
-
-    @filter.command("本周热词")
-    async def week_trend(self, event: AstrMessageEvent):
-        async for result in self._trend_command(event, "this_week", "last_week", "本周", "上周"):
-            yield result
-
-    @filter.command("本月热词")
-    async def month_trend(self, event: AstrMessageEvent):
-        async for result in self._trend_command(event, "this_month", "last_month", "本月", "上月"):
-            yield result
-
-    @filter.command("群聊画像")
-    async def group_profile(self, event: AstrMessageEvent):
+    async def _do_profile(self, event: AstrMessageEvent, args: dict):
         err = self._check_ready()
         if err:
             async for r in self._reply_yield(event, err):
@@ -472,23 +365,15 @@ class WordCloudPlugin(Star):
             return
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
-
-        time_kw = "this_month"
-        text = event.message_str.strip()
-        if "本周" in text:
-            time_kw = "this_week"
-
-        period_name = format_period_name(time_kw)
-        messages = await self._get_messages(event, time_kw, group_id)
+        messages = await self._get_messages(event, args["time_kw"], group_id)
         if not messages:
-            async for r in self._reply_yield(event, f"{period_name}暂无消息记录"):
+            async for r in self._reply_yield(event, f"{args['period_name']}暂无消息记录"):
                 yield r
             return
-
         loop = asyncio.get_event_loop()
         profile = await loop.run_in_executor(
             self._executor,
-            lambda: build_group_profile(messages, self._seg_engine, self._config, group_key, period_name),
+            lambda: build_group_profile(messages, self._seg_engine, self._config, group_key, args["period_name"]),
         )
         if profile is None:
             async for r in self._reply_yield(event, "画像生成失败"):
@@ -497,8 +382,7 @@ class WordCloudPlugin(Star):
         async for r in self._reply_yield(event, format_group_profile(profile)):
             yield r
 
-    @filter.command("我的风格")
-    async def my_style(self, event: AstrMessageEvent):
+    async def _do_my_style(self, event: AstrMessageEvent, args: dict):
         err = self._check_ready()
         if err:
             async for r in self._reply_yield(event, err):
@@ -507,23 +391,15 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         sender_id = event.message_obj.sender.user_id if event.message_obj.sender else ""
-
-        time_kw = "this_month"
-        text = event.message_str.strip()
-        if "本周" in text:
-            time_kw = "this_week"
-
-        period_name = format_period_name(time_kw)
-        messages = await self._get_messages(event, time_kw, group_id)
+        messages = await self._get_messages(event, args["time_kw"], group_id)
         if not messages:
-            async for r in self._reply_yield(event, f"{period_name}暂无消息记录"):
+            async for r in self._reply_yield(event, f"{args['period_name']}暂无消息记录"):
                 yield r
             return
-
         loop = asyncio.get_event_loop()
         style = await loop.run_in_executor(
             self._executor,
-            lambda: build_personal_style(messages, sender_id, self._seg_engine, self._config, group_key, period_name),
+            lambda: build_personal_style(messages, sender_id, self._seg_engine, self._config, group_key, args["period_name"]),
         )
         if style is None:
             async for r in self._reply_yield(event, "未找到你的发言记录"):
@@ -532,160 +408,175 @@ class WordCloudPlugin(Star):
         async for r in self._reply_yield(event, format_personal_style(style)):
             yield r
 
-    @filter.command("添加词云词典")
-    async def add_dict_word(self, event: AstrMessageEvent, word: str, pos: Optional[str] = None):
+    async def _do_dict(self, event: AstrMessageEvent, args: dict):
         group_key = self._get_group_key(event)
         err = self._require_group(event)
         if err:
             async for r in self._reply_yield(event, err):
                 yield r
             return
-
-        self._dict_manager.add_word(group_key, word, pos)
-        self._seg_engine.invalidate_group_cache(group_key)
-
-        msg = f"已添加词语「{word}」（词性: {pos}）到群级词典" if pos else f"已添加词语「{word}」到群级词典"
-        async for r in self._reply_yield(event, msg):
-            yield r
-
-    @filter.command("删除词云词典")
-    async def remove_dict_word(self, event: AstrMessageEvent, word: str):
-        group_key = self._get_group_key(event)
-        err = self._require_group(event)
-        if err:
-            async for r in self._reply_yield(event, err):
-                yield r
-            return
-
-        if self._dict_manager.remove_word(group_key, word):
+        extra = args["extra_args"]
+        text = event.message_str.strip()
+        words = text.split()
+        word = None
+        pos = None
+        for w in words[2:]:
+            if w in ("添加", "删除", "查看"):
+                continue
+            if word is None:
+                word = w
+            elif pos is None and len(w) <= 2:
+                pos = w
+        if "添加" in extra:
+            if not word:
+                async for r in self._reply_yield(event, "请指定要添加的词语"):
+                    yield r
+                return
+            self._dict_manager.add_word(group_key, word, pos)
             self._seg_engine.invalidate_group_cache(group_key)
-            msg = f"已从群级词典删除词语「{word}」"
+            msg = f"已添加词语「{word}」" + (f"（词性: {pos}）" if pos else "") + "到群级词典"
+            async for r in self._reply_yield(event, msg):
+                yield r
+        elif "删除" in extra:
+            if not word:
+                async for r in self._reply_yield(event, "请指定要删除的词语"):
+                    yield r
+                return
+            if self._dict_manager.remove_word(group_key, word):
+                self._seg_engine.invalidate_group_cache(group_key)
+                msg = f"已从群级词典删除词语「{word}」"
+            else:
+                msg = f"群级词典中未找到词语「{word}」"
+            async for r in self._reply_yield(event, msg):
+                yield r
         else:
-            msg = f"群级词典中未找到词语「{word}」"
-        async for r in self._reply_yield(event, msg):
-            yield r
+            words_list = self._dict_manager.list_words(group_key)
+            if not words_list:
+                async for r in self._reply_yield(event, "群级词典为空"):
+                    yield r
+                return
+            lines = ["📋 群级词典内容:", ""]
+            for w in words_list:
+                lines.append(f"  • {w}")
+            async for r in self._reply_yield(event, "\n".join(lines)):
+                yield r
 
-    @filter.command("查看词云词典")
-    async def list_dict_words(self, event: AstrMessageEvent):
+    async def _do_schedule(self, event: AstrMessageEvent, args: dict):
         group_key = self._get_group_key(event)
         err = self._require_group(event)
         if err:
             async for r in self._reply_yield(event, err):
                 yield r
             return
-
-        words = self._dict_manager.list_words(group_key)
-        if not words:
-            async for r in self._reply_yield(event, "群级词典为空"):
-                yield r
-            return
-
-        lines = ["📋 群级词典内容:", ""]
-        for w in words:
-            lines.append(f"  • {w}")
-        async for r in self._reply_yield(event, "\n".join(lines)):
-            yield r
-
-    @filter.command("开启词云每日定时发送")
-    async def enable_schedule(self, event: AstrMessageEvent, time_str: str = "22:00"):
-        group_key = self._get_group_key(event)
-        err = self._require_group(event)
-        if err:
-            async for r in self._reply_yield(event, err):
-                yield r
-            return
-
-        umo = event.unified_msg_origin
-        group_id = event.message_obj.group_id or ""
-        add_schedule(group_key, time_str, unified_msg_origin=umo, group_id=group_id)
-        async for r in self._reply_yield(event, f"已开启每日 {time_str} 定时发送今日词云"):
-            yield r
-
-    @filter.command("关闭词云每日定时发送")
-    async def disable_schedule(self, event: AstrMessageEvent):
-        group_key = self._get_group_key(event)
-        err = self._require_group(event)
-        if err:
-            async for r in self._reply_yield(event, err):
-                yield r
-            return
-
-        if remove_schedule(group_key):
-            msg = "已关闭每日定时发送词云"
-        else:
-            msg = "本群未开启定时发送"
-        async for r in self._reply_yield(event, msg):
-            yield r
-
-    @filter.command("设置词云形状")
-    async def set_mask(self, event: AstrMessageEvent):
-        group_key = self._get_group_key(event)
-        err = self._require_group(event)
-        if err:
-            async for r in self._reply_yield(event, err):
-                yield r
-            return
-
-        image_url = None
-        for comp in (event.message_obj.message or []):
-            if hasattr(comp, "url") and comp.url:
-                image_url = comp.url
+        extra = args["extra_args"]
+        text = event.message_str.strip()
+        words = text.split()
+        time_str = "22:00"
+        for w in words[2:]:
+            if ":" in w or "：" in w:
+                time_str = w.replace("：", ":")
                 break
-            if hasattr(comp, "path") and comp.path:
-                image_url = comp.path
-                break
-
-        if not image_url:
-            async for r in self._reply_yield(event, "请回复一张图片来设置词云形状"):
+        if "开启" in extra:
+            umo = event.unified_msg_origin
+            group_id = event.message_obj.group_id or ""
+            add_schedule(group_key, time_str, unified_msg_origin=umo, group_id=group_id)
+            async for r in self._reply_yield(event, f"已开启每日 {time_str} 定时发送今日词云"):
                 yield r
-            return
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(image_url) as resp:
-                    if resp.status == 200:
-                        image_data = await resp.read()
-                    else:
-                        async for r in self._reply_yield(event, "图片下载失败"):
-                            yield r
-                        return
-        except Exception as e:
-            logger.error(f"[WordCloud] 下载遮罩图片失败: {e}")
-            async for r in self._reply_yield(event, "图片下载失败"):
+        else:
+            if remove_schedule(group_key):
+                msg = "已关闭每日定时发送词云"
+            else:
+                msg = "本群未开启定时发送"
+            async for r in self._reply_yield(event, msg):
                 yield r
-            return
 
-        self._mask_manager.save_mask(image_data, group_key)
-        async for r in self._reply_yield(event, "已设置群级词云形状"):
-            yield r
-
-    @filter.command("删除词云形状")
-    async def delete_mask(self, event: AstrMessageEvent):
+    async def _do_mask(self, event: AstrMessageEvent, args: dict):
         group_key = self._get_group_key(event)
         err = self._require_group(event)
         if err:
             async for r in self._reply_yield(event, err):
                 yield r
             return
-
-        if self._mask_manager.delete_mask(group_key):
-            msg = "已删除群级词云形状"
+        extra = args["extra_args"]
+        if "设置" in extra or "删除" not in extra:
+            image_url = None
+            for comp in (event.message_obj.message or []):
+                if hasattr(comp, "url") and comp.url:
+                    image_url = comp.url
+                    break
+                if hasattr(comp, "path") and comp.path:
+                    image_url = comp.path
+                    break
+            if not image_url:
+                async for r in self._reply_yield(event, "请回复一张图片来设置词云形状"):
+                    yield r
+                return
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(image_url) as resp:
+                        if resp.status == 200:
+                            image_data = await resp.read()
+                        else:
+                            async for r in self._reply_yield(event, "图片下载失败"):
+                                yield r
+                            return
+            except Exception as e:
+                logger.error(f"[WordCloud] 下载遮罩图片失败: {e}")
+                async for r in self._reply_yield(event, "图片下载失败"):
+                    yield r
+                return
+            self._mask_manager.save_mask(image_data, group_key)
+            async for r in self._reply_yield(event, "已设置群级词云形状"):
+                yield r
         else:
-            msg = "本群未设置词云形状"
-        async for r in self._reply_yield(event, msg):
-            yield r
+            if self._mask_manager.delete_mask(group_key):
+                msg = "已删除群级词云形状"
+            else:
+                msg = "本群未设置词云形状"
+            async for r in self._reply_yield(event, msg):
+                yield r
+
+    @filter.command("词云")
+    async def wordcloud(self, event: AstrMessageEvent):
+        text = event.message_str.strip()
+        args = self._parse_args(text)
+        action = args["action"]
+        if action == "wordcloud":
+            async for result in self._do_wordcloud(event, args):
+                yield result
+        elif action == "排名":
+            async for result in self._do_ranking(event, args):
+                yield result
+        elif action == "词性":
+            async for result in self._do_pos_analysis(event, args):
+                yield result
+        elif action == "热词":
+            async for result in self._do_trend(event, args):
+                yield result
+        elif action == "画像":
+            async for result in self._do_profile(event, args):
+                yield result
+        elif action == "我的":
+            async for result in self._do_my_style(event, args):
+                yield result
+        elif action == "词典":
+            async for result in self._do_dict(event, args):
+                yield result
+        elif action == "定时":
+            async for result in self._do_schedule(event, args):
+                yield result
+        elif action == "形状":
+            async for result in self._do_mask(event, args):
+                yield result
 
     async def _schedule_loop(self):
         last_sent_date: dict[str, str] = {}
-
         while True:
             try:
                 await asyncio.sleep(60)
-
                 now = datetime.now()
                 current_time = now.strftime("%H:%M")
                 current_date = now.strftime("%Y-%m-%d")
-
                 schedules = get_all_schedules()
                 for group_key, schedule_info in schedules.items():
                     if not schedule_info.get("enabled", True):
@@ -694,10 +585,8 @@ class WordCloudPlugin(Star):
                         continue
                     if last_sent_date.get(group_key) == current_date:
                         continue
-
                     last_sent_date[group_key] = current_date
                     await self._send_scheduled_wordcloud(group_key, schedule_info)
-
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -707,49 +596,35 @@ class WordCloudPlugin(Star):
         api = await self._get_recorder_api()
         if api is None:
             return
-
         umo = schedule_info.get("umo", "")
         group_id = schedule_info.get("group_id", "")
-
         if not umo:
             logger.warning(f"[WordCloud] 定时任务缺少 unified_msg_origin: {group_key}")
             return
-
         try:
-            messages = await api.query(
-                group_id=group_id,
-                time="today",
-                limit=50000,
-            )
+            messages = await api.query(group_id=group_id, time="today", limit=50000)
         except Exception as e:
             logger.error(f"[WordCloud] 定时任务获取消息失败: {e}")
             return
-
         if not messages:
             return
-
         loop = asyncio.get_event_loop()
         word_counter = await loop.run_in_executor(
             self._executor,
             lambda: analyse_message(messages, self._seg_engine, self._config, group_key),
         )
-
         if not word_counter:
             return
-
         mask = self._mask_manager.get_mask(group_key)
         image_data = await loop.run_in_executor(
             self._executor,
-            lambda: generate_wordcloud(word_counter, self._config, None, mask, "今日词云"),
+            lambda: generate_wordcloud(word_counter, self._config, None, mask),
         )
-
         if not image_data:
             return
-
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             f.write(image_data)
             temp_path = f.name
-
         try:
             chain = MessageChain().message("每日词云已送达！").file_image(temp_path)
             await self.context.send_message(umo, chain)

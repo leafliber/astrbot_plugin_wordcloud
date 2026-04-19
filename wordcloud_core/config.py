@@ -114,6 +114,10 @@ class Config:
         return ""
 
     @property
+    def filter_function_words(self) -> bool:
+        return self.get("wordcloud_filter_function_words", True)
+
+    @property
     def ranking_limit(self) -> int:
         return self.get("wordcloud_ranking_limit", 10)
 

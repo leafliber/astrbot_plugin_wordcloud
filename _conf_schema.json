@@ -65,6 +65,12 @@
     "hint": "上传 pkuseg 用户词典，用于添加领域专有词汇（格式：词语 词性，每行一个）",
     "file_types": ["txt"]
   },
+  "wordcloud_filter_function_words": {
+    "type": "bool",
+    "description": "排除虚词",
+    "default": true,
+    "hint": "开启后将过滤代词、介词、连词、助词等虚词，仅保留名词、动词、形容词等实词"
+  },
   "wordcloud_ranking_limit": {
     "type": "int",
     "description": "排名显示人数",

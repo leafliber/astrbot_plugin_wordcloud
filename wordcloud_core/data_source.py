@@ -163,10 +163,13 @@ def analyse_message(
     pos_filter: Optional[str] = None,
 ) -> Counter:
     word_counter: Counter = Counter()
-    if seg_engine.engine_type == "jieba":
-        pos_whitelist = _JIEBA_POS_WHITELIST
+    if config.filter_function_words:
+        if seg_engine.engine_type == "jieba":
+            pos_whitelist = _JIEBA_POS_WHITELIST
+        else:
+            pos_whitelist = _PKUSEG_POS_WHITELIST
     else:
-        pos_whitelist = _PKUSEG_POS_WHITELIST
+        pos_whitelist = None
     min_len = config.min_word_length
     stopwords = seg_engine._stopwords
 
@@ -196,8 +199,8 @@ def analyse_message(
             if pos_filter is not None:
                 if not pos.startswith(pos_filter):
                     continue
-            else:
-                if pos_whitelist and pos not in pos_whitelist:
+            elif pos_whitelist is not None:
+                if pos not in pos_whitelist:
                     continue
 
             word_counter[word] += 1

@@ -49,6 +49,32 @@ class WordCloudPlugin(Star):
         self._mr_api = None
         self._schedule_task: Optional[asyncio.Task] = None
 
+    async def _get_recorder_api(self):
+        if self._mr_api is None:
+            try:
+                star_meta = self.context.get_registered_star("astrbot_plugin_message_recorder")
+                if star_meta is None:
+                    logger.warning("[WordCloud] 未找到 message_recorder 插件")
+                    return None
+                
+                plugin_instance = getattr(star_meta, "star_cls", None)
+                if plugin_instance is None:
+                    logger.warning("[WordCloud] message_recorder 插件实例为 None，可能未激活")
+                    return None
+                
+                if hasattr(plugin_instance, "get_api"):
+                    self._mr_api = plugin_instance.get_api()
+                    if self._mr_api:
+                        logger.info("[WordCloud] 已获取 message_recorder API")
+                    else:
+                        logger.warning("[WordCloud] message_recorder 插件未正确初始化")
+                else:
+                    logger.warning("[WordCloud] 插件实例没有 get_api 方法")
+                    
+            except Exception as e:
+                logger.warning(f"[WordCloud] 获取 message_recorder API 失败: {e}")
+        return self._mr_api
+
     async def initialize(self):
         try:
             loop = asyncio.get_event_loop()
@@ -57,23 +83,8 @@ class WordCloudPlugin(Star):
             logger.error(f"[WordCloud] pkuseg 初始化失败: {e}")
             return
 
-        try:
-            recorder = self.context.get_registered_star("astrbot_plugin_message_recorder")
-            if recorder and recorder.star_cls:
-                try:
-                    self._mr_api = recorder.star_cls.get_api()
-                    logger.info("[WordCloud] 已连接 astrbot_plugin_message_recorder")
-                except AttributeError:
-                    logger.warning("[WordCloud] 消息记录器插件不支持 API 接口")
-                except Exception as e:
-                    logger.warning(f"[WordCloud] 获取消息记录器 API 失败: {e}")
-            else:
-                logger.warning("[WordCloud] 未找到 astrbot_plugin_message_recorder 插件实例")
-        except Exception as e:
-            logger.warning(f"[WordCloud] 获取消息记录器失败: {e}")
-
+        await self._get_recorder_api()
         logger.info("[WordCloud] 插件初始化完成")
-
         self._schedule_task = asyncio.create_task(self._schedule_loop())
 
     async def terminate(self):
@@ -109,7 +120,8 @@ class WordCloudPlugin(Star):
         group_id: Optional[str] = None,
         sender_id: Optional[str] = None,
     ) -> list:
-        if self._mr_api is None:
+        api = await self._get_recorder_api()
+        if api is None:
             return []
 
         mr_time = self._TIME_KEYWORD_MAP.get(time_keyword)
@@ -128,7 +140,7 @@ class WordCloudPlugin(Star):
             kwargs["sender_id"] = sender_id
 
         try:
-            return await self._mr_api.query(**kwargs)
+            return await api.query(**kwargs)
         except Exception as e:
             logger.error(f"[WordCloud] 获取消息失败: {e}")
             return []
@@ -671,7 +683,8 @@ class WordCloudPlugin(Star):
                 logger.error(f"[WordCloud] 定时任务异常: {e}")
 
     async def _send_scheduled_wordcloud(self, group_key: str, schedule_info: dict):
-        if self._mr_api is None:
+        api = await self._get_recorder_api()
+        if api is None:
             return
 
         umo = schedule_info.get("umo", "")
@@ -682,7 +695,7 @@ class WordCloudPlugin(Star):
             return
 
         try:
-            messages = await self._mr_api.query(
+            messages = await api.query(
                 group_id=group_id,
                 time="today",
                 limit=50000,

@@ -48,13 +48,23 @@ class Config:
 
     @property
     def font_path(self) -> str:
+        file_list = self.get("wordcloud_font_file", [])
+        if file_list and isinstance(file_list, list) and len(file_list) > 0:
+            path = file_list[0]
+            if os.path.isfile(path):
+                return path
         custom = self.get("wordcloud_font_path", "")
         if custom and os.path.isfile(custom):
             return custom
-        return os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts", "SourceHanSans.otf")
+        return os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts", "HarmonyOS_Sans_SC_Regular.ttf")
 
     @property
     def stopwords_path(self) -> str:
+        file_list = self.get("wordcloud_stopwords_file", [])
+        if file_list and isinstance(file_list, list) and len(file_list) > 0:
+            path = file_list[0]
+            if os.path.isfile(path):
+                return path
         custom = self.get("wordcloud_stopwords_path", "")
         if custom and os.path.isfile(custom):
             return custom
@@ -62,6 +72,11 @@ class Config:
 
     @property
     def user_dict_path(self) -> str:
+        file_list = self.get("wordcloud_user_dict_file", [])
+        if file_list and isinstance(file_list, list) and len(file_list) > 0:
+            path = file_list[0]
+            if os.path.isfile(path):
+                return path
         custom = self.get("wordcloud_user_dict_path", "")
         if custom and os.path.isfile(custom):
             return custom

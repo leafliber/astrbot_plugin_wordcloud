@@ -53,9 +53,14 @@ class WordCloudPlugin(Star):
 
         try:
             recorder = self.context.get_registered_star("astrbot_plugin_message_recorder")
-            if recorder and recorder.star_cls and hasattr(recorder.star_cls, "get_api"):
-                self._mr_api = recorder.star_cls.get_api()
-                logger.info("[WordCloud] 已连接 astrbot_plugin_message_recorder")
+            if recorder and recorder.star_cls:
+                try:
+                    self._mr_api = recorder.star_cls.get_api()
+                    logger.info("[WordCloud] 已连接 astrbot_plugin_message_recorder")
+                except AttributeError:
+                    logger.warning("[WordCloud] 消息记录器插件不支持 API 接口")
+                except Exception as e:
+                    logger.warning(f"[WordCloud] 获取消息记录器 API 失败: {e}")
             else:
                 logger.warning("[WordCloud] 未找到 astrbot_plugin_message_recorder 插件实例")
         except Exception as e:

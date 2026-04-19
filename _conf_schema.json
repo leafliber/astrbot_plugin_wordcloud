@@ -3,7 +3,7 @@
     "type": "string",
     "description": "pkuseg 分词模型",
     "default": "web",
-    "hint": "可选: web(网络文本), news(新闻), medicine(医学), tourism(旅游)",
+    "hint": "不同模型针对不同领域优化，选择合适的模型可提高分词准确率",
     "options": ["web", "news", "medicine", "tourism"]
   },
   "wordcloud_min_word_length": {
@@ -34,31 +34,36 @@
     "type": "string",
     "description": "词云背景色",
     "default": "white",
-    "hint": "词云图片的背景颜色，如 white、black、transparent"
+    "hint": "词云图片的背景颜色",
+    "options": ["white", "black", "transparent"]
   },
   "wordcloud_colormap": {
     "type": "string",
     "description": "词云色彩映射表",
     "default": "viridis",
-    "hint": "词云字体颜色方案，如 viridis、plasma、Set2、Paired 等"
+    "hint": "词云字体颜色方案",
+    "options": ["viridis", "plasma", "inferno", "magma", "cividis", "Set2", "Set3", "Paired", "tab10", "tab20"]
   },
-  "wordcloud_font_path": {
-    "type": "string",
-    "description": "自定义字体路径",
-    "default": "",
-    "hint": "词云使用的字体文件绝对路径，留空则使用内置默认字体"
+  "wordcloud_font_file": {
+    "type": "file",
+    "description": "自定义字体文件",
+    "default": [],
+    "hint": "上传自定义字体文件（.ttf/.otf），留空则使用内置默认字体",
+    "file_types": ["ttf", "otf", "TTF", "OTF"]
   },
-  "wordcloud_stopwords_path": {
-    "type": "string",
-    "description": "自定义停用词表路径",
-    "default": "",
-    "hint": "停用词表文件绝对路径，留空则使用内置默认停用词表"
+  "wordcloud_stopwords_file": {
+    "type": "file",
+    "description": "自定义停用词表",
+    "default": [],
+    "hint": "上传自定义停用词表（每行一个词），留空则使用内置默认停用词表",
+    "file_types": ["txt"]
   },
-  "wordcloud_user_dict_path": {
-    "type": "string",
-    "description": "自定义词典路径",
-    "default": "",
-    "hint": "pkuseg 用户词典文件绝对路径，用于添加领域专有词汇"
+  "wordcloud_user_dict_file": {
+    "type": "file",
+    "description": "自定义词典",
+    "default": [],
+    "hint": "上传 pkuseg 用户词典，用于添加领域专有词汇（格式：词语 词性，每行一个）",
+    "file_types": ["txt"]
   },
   "wordcloud_pos_whitelist": {
     "type": "string",
@@ -82,25 +87,29 @@
     "type": "string",
     "description": "名词词云色彩映射表",
     "default": "Blues",
-    "hint": "名词词云的字体颜色方案，如 Blues、Blues_r、YlGnBu 等"
+    "hint": "名词词云的字体颜色方案",
+    "options": ["Blues", "Blues_r", "YlGnBu", "YlGnBu_r", "cool", "cool_r"]
   },
   "wordcloud_pos_verb_colormap": {
     "type": "string",
     "description": "动词词云色彩映射表",
     "default": "Greens",
-    "hint": "动词词云的字体颜色方案，如 Greens、Greens_r、YlGn 等"
+    "hint": "动词词云的字体颜色方案",
+    "options": ["Greens", "Greens_r", "YlGn", "YlGn_r", "summer", "summer_r"]
   },
   "wordcloud_pos_adj_colormap": {
     "type": "string",
     "description": "形容词词云色彩映射表",
     "default": "Oranges",
-    "hint": "形容词词云的字体颜色方案，如 Oranges、Oranges_r、YlOrRd 等"
+    "hint": "形容词词云的字体颜色方案",
+    "options": ["Oranges", "Oranges_r", "YlOrRd", "YlOrRd_r", "autumn", "autumn_r"]
   },
   "wordcloud_pos_adv_colormap": {
     "type": "string",
     "description": "副词词云色彩映射表",
     "default": "Purples",
-    "hint": "副词词云的字体颜色方案，如 Purples、Purples_r、RdPu 等"
+    "hint": "副词词云的字体颜色方案",
+    "options": ["Purples", "Purples_r", "RdPu", "RdPu_r", "spring", "spring_r"]
   },
   "wordcloud_trend_threshold": {
     "type": "float",

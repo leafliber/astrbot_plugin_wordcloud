@@ -176,7 +176,7 @@ class WordCloudPlugin(Star):
             logger.error(f"[WordCloud] 获取消息失败: {e}")
             return []
 
-    async def _generate_and_send(
+    async def _send_wordcloud_direct(
         self,
         event: AstrMessageEvent,
         messages: list,
@@ -187,11 +187,9 @@ class WordCloudPlugin(Star):
         title_suffix: str = "",
     ):
         if not self._seg_engine.ready:
-            yield event.plain_result("分词引擎正在加载中，请稍后再试")
             return
 
         if not messages:
-            yield event.plain_result(f"{period_name}暂无消息记录，无法生成词云")
             return
 
         loop = asyncio.get_event_loop()
@@ -201,7 +199,6 @@ class WordCloudPlugin(Star):
         )
 
         if not word_counter:
-            yield event.plain_result(f"{period_name}有效词语不足，无法生成词云")
             return
 
         mask = self._mask_manager.get_mask(group_key)
@@ -213,7 +210,6 @@ class WordCloudPlugin(Star):
         )
 
         if not image_data:
-            yield event.plain_result("词云生成失败")
             return
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -221,7 +217,11 @@ class WordCloudPlugin(Star):
             temp_path = f.name
 
         try:
-            yield event.image_result(temp_path)
+            umo = event.unified_msg_origin
+            chain = MessageChain().file_image(temp_path)
+            await self.context.send_message(umo, chain)
+        except Exception as e:
+            logger.error(f"[WordCloud] 发送词云失败: {e}")
         finally:
             try:
                 os.unlink(temp_path)
@@ -234,8 +234,7 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "today", group_id)
-        async for result in self._generate_and_send(event, messages, "今日", group_key):
-            yield result
+        await self._send_wordcloud_direct(event, messages, "今日", group_key)
 
     @filter.command("昨日词云")
     async def yesterday_wordcloud(self, event: AstrMessageEvent):
@@ -243,8 +242,7 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "yesterday", group_id)
-        async for result in self._generate_and_send(event, messages, "昨日", group_key):
-            yield result
+        await self._send_wordcloud_direct(event, messages, "昨日", group_key)
 
     @filter.command("本周词云")
     async def week_wordcloud(self, event: AstrMessageEvent):
@@ -252,8 +250,7 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "this_week", group_id)
-        async for result in self._generate_and_send(event, messages, "本周", group_key):
-            yield result
+        await self._send_wordcloud_direct(event, messages, "本周", group_key)
 
     @filter.command("上周词云")
     async def last_week_wordcloud(self, event: AstrMessageEvent):
@@ -261,8 +258,7 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "last_week", group_id)
-        async for result in self._generate_and_send(event, messages, "上周", group_key):
-            yield result
+        await self._send_wordcloud_direct(event, messages, "上周", group_key)
 
     @filter.command("本月词云")
     async def month_wordcloud(self, event: AstrMessageEvent):
@@ -270,8 +266,7 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "this_month", group_id)
-        async for result in self._generate_and_send(event, messages, "本月", group_key):
-            yield result
+        await self._send_wordcloud_direct(event, messages, "本月", group_key)
 
     @filter.command("上月词云")
     async def last_month_wordcloud(self, event: AstrMessageEvent):
@@ -279,8 +274,7 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "last_month", group_id)
-        async for result in self._generate_and_send(event, messages, "上月", group_key):
-            yield result
+        await self._send_wordcloud_direct(event, messages, "上月", group_key)
 
     @filter.command("年度词云")
     async def year_wordcloud(self, event: AstrMessageEvent):
@@ -288,8 +282,7 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "this_year", group_id)
-        async for result in self._generate_and_send(event, messages, "今年", group_key):
-            yield result
+        await self._send_wordcloud_direct(event, messages, "今年", group_key)
 
     @filter.command_group("词云")
     def wordcloud_group(self):
@@ -302,12 +295,11 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "today", group_id)
-        async for result in self._generate_and_send(
+        await self._send_wordcloud_direct(
             event, messages, "今日", group_key,
             pos_filter="n", colormap_override=self._config.pos_noun_colormap,
             title_suffix="名词",
-        ):
-            yield result
+        )
 
     @wordcloud_group.command("动词")
     async def verb_wordcloud(self, event: AstrMessageEvent):
@@ -315,12 +307,11 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "today", group_id)
-        async for result in self._generate_and_send(
+        await self._send_wordcloud_direct(
             event, messages, "今日", group_key,
             pos_filter="v", colormap_override=self._config.pos_verb_colormap,
             title_suffix="动词",
-        ):
-            yield result
+        )
 
     @wordcloud_group.command("形容词")
     async def adj_wordcloud(self, event: AstrMessageEvent):
@@ -328,12 +319,11 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "today", group_id)
-        async for result in self._generate_and_send(
+        await self._send_wordcloud_direct(
             event, messages, "今日", group_key,
             pos_filter="a", colormap_override=self._config.pos_adj_colormap,
             title_suffix="形容词",
-        ):
-            yield result
+        )
 
     @wordcloud_group.command("副词")
     async def adv_wordcloud(self, event: AstrMessageEvent):
@@ -341,12 +331,11 @@ class WordCloudPlugin(Star):
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, "today", group_id)
-        async for result in self._generate_and_send(
+        await self._send_wordcloud_direct(
             event, messages, "今日", group_key,
             pos_filter="d", colormap_override=self._config.pos_adv_colormap,
             title_suffix="副词",
-        ):
-            yield result
+        )
 
     @filter.command("今日排名")
     async def today_ranking(self, event: AstrMessageEvent):

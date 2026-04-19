@@ -1,0 +1,21 @@
+name: astrbot_plugin_wordcloud
+desc: 群聊词云生成插件，基于 pkuseg 分词与词性标注，支持词性词云、热词趋势、群聊画像等功能
+version: 0.1.0
+author: Leafiber
+repo: https://github.com/leafliber/astrbot_plugin_wordcloud
+display_name: 词云
+support_platforms:
+  - telegram
+  - discord
+  - qq_official
+  - qq_private
+  - wechat
+  - generic
+astrbot_version: ">=4.16,<5"
+keywords:
+  - 词云
+  - wordcloud
+  - pkuseg
+  - 词性标注
+  - 热词趋势
+  - 群聊画像

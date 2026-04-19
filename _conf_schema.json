@@ -1,0 +1,147 @@
+{
+  "wordcloud_pkuseg_model": {
+    "type": "string",
+    "description": "pkuseg 分词模型",
+    "default": "web",
+    "hint": "可选: web(网络文本), news(新闻), medicine(医学), tourism(旅游)",
+    "options": ["web", "news", "medicine", "tourism"]
+  },
+  "wordcloud_min_word_length": {
+    "type": "int",
+    "description": "最小词长",
+    "default": 2,
+    "hint": "词云中显示的最小词语长度，小于此长度的词将被过滤"
+  },
+  "wordcloud_max_words": {
+    "type": "int",
+    "description": "词云最大词数",
+    "default": 200,
+    "hint": "词云图片中最多显示的词语数量"
+  },
+  "wordcloud_width": {
+    "type": "int",
+    "description": "词云图片宽度",
+    "default": 800,
+    "hint": "生成词云图片的宽度（像素）"
+  },
+  "wordcloud_height": {
+    "type": "int",
+    "description": "词云图片高度",
+    "default": 600,
+    "hint": "生成词云图片的高度（像素）"
+  },
+  "wordcloud_background_color": {
+    "type": "string",
+    "description": "词云背景色",
+    "default": "white",
+    "hint": "词云图片的背景颜色，如 white、black、transparent"
+  },
+  "wordcloud_colormap": {
+    "type": "string",
+    "description": "词云色彩映射表",
+    "default": "viridis",
+    "hint": "词云字体颜色方案，如 viridis、plasma、Set2、Paired 等"
+  },
+  "wordcloud_font_path": {
+    "type": "string",
+    "description": "自定义字体路径",
+    "default": "",
+    "hint": "词云使用的字体文件绝对路径，留空则使用内置默认字体"
+  },
+  "wordcloud_stopwords_path": {
+    "type": "string",
+    "description": "自定义停用词表路径",
+    "default": "",
+    "hint": "停用词表文件绝对路径，留空则使用内置默认停用词表"
+  },
+  "wordcloud_user_dict_path": {
+    "type": "string",
+    "description": "自定义词典路径",
+    "default": "",
+    "hint": "pkuseg 用户词典文件绝对路径，用于添加领域专有词汇"
+  },
+  "wordcloud_pos_whitelist": {
+    "type": "string",
+    "description": "词性白名单",
+    "default": "n,nr,ns,nt,nz,v,vd,vn,a,ad,an,d",
+    "hint": "参与词云的词性列表（逗号分隔），留空则不过滤词性"
+  },
+  "wordcloud_ranking_limit": {
+    "type": "int",
+    "description": "排名显示人数",
+    "default": 10,
+    "hint": "发言排名中显示的最大人数"
+  },
+  "wordcloud_ranking_show_percentage": {
+    "type": "bool",
+    "description": "排名显示百分比",
+    "default": true,
+    "hint": "发言排名中是否显示每人消息数占总数的百分比"
+  },
+  "wordcloud_pos_noun_colormap": {
+    "type": "string",
+    "description": "名词词云色彩映射表",
+    "default": "Blues",
+    "hint": "名词词云的字体颜色方案，如 Blues、Blues_r、YlGnBu 等"
+  },
+  "wordcloud_pos_verb_colormap": {
+    "type": "string",
+    "description": "动词词云色彩映射表",
+    "default": "Greens",
+    "hint": "动词词云的字体颜色方案，如 Greens、Greens_r、YlGn 等"
+  },
+  "wordcloud_pos_adj_colormap": {
+    "type": "string",
+    "description": "形容词词云色彩映射表",
+    "default": "Oranges",
+    "hint": "形容词词云的字体颜色方案，如 Oranges、Oranges_r、YlOrRd 等"
+  },
+  "wordcloud_pos_adv_colormap": {
+    "type": "string",
+    "description": "副词词云色彩映射表",
+    "default": "Purples",
+    "hint": "副词词云的字体颜色方案，如 Purples、Purples_r、RdPu 等"
+  },
+  "wordcloud_trend_threshold": {
+    "type": "float",
+    "description": "热词趋势增长率阈值",
+    "default": 0.5,
+    "hint": "词频增长率超过此阈值（50%）视为新兴热词，低于负阈值视为衰退话题"
+  },
+  "wordcloud_trend_emerging_limit": {
+    "type": "int",
+    "description": "新兴热词显示数量",
+    "default": 10,
+    "hint": "热词趋势报告中新兴热词的最大显示数量"
+  },
+  "wordcloud_trend_declining_limit": {
+    "type": "int",
+    "description": "衰退话题显示数量",
+    "default": 5,
+    "hint": "热词趋势报告中衰退话题的最大显示数量"
+  },
+  "wordcloud_profile_top_words": {
+    "type": "int",
+    "description": "画像高频词显示数量",
+    "default": 5,
+    "hint": "群聊语言画像中高频词的显示数量"
+  },
+  "wordcloud_style_adj_threshold": {
+    "type": "float",
+    "description": "风格标签-形容词占比阈值",
+    "default": 0.15,
+    "hint": "个人形容词占比超过此值（15%）标记为「感性表达者」"
+  },
+  "wordcloud_style_verb_threshold": {
+    "type": "float",
+    "description": "风格标签-动词占比阈值",
+    "default": 0.30,
+    "hint": "个人动词占比超过此值（30%）标记为「行动派」"
+  },
+  "wordcloud_style_noun_threshold": {
+    "type": "float",
+    "description": "风格标签-名词占比阈值",
+    "default": 0.40,
+    "hint": "个人名词占比超过此值（40%）标记为「知识分享者」"
+  }
+}

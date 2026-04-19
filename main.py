@@ -1,9 +1,15 @@
 import asyncio
 import os
+import sys
 import tempfile
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
+
+# 确保插件目录在 sys.path 中
+PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+if PLUGIN_DIR not in sys.path:
+    sys.path.insert(0, PLUGIN_DIR)
 
 import aiohttp
 from astrbot.api import logger, AstrBotConfig

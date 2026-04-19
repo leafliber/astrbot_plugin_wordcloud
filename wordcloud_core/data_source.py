@@ -49,7 +49,7 @@ class SegEngine:
         self._group_segs: dict = {}
 
     def _init_seg(self, user_dict: Optional[str] = None):
-        import pkuseg
+        import spacy_pkuseg as pkuseg
 
         kwargs = {
             "model_name": self._config.pkuseg_model,

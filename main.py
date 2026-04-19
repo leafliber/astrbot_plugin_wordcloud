@@ -86,7 +86,6 @@ class WordCloudPlugin(Star):
         self._api_max_retry: int = 5
 
     async def _reply_yield(self, event: AstrMessageEvent, message: str):
-        event.stop_event()
         yield event.plain_result(message)
 
     def _check_ready(self) -> Optional[str]:
@@ -538,37 +537,39 @@ class WordCloudPlugin(Star):
 
     @filter.command("词云")
     async def wordcloud(self, event: AstrMessageEvent):
-        event.stop_event()
-        text = event.message_str.strip()
-        args = self._parse_args(text)
-        action = args["action"]
-        if action == "wordcloud":
-            async for result in self._do_wordcloud(event, args):
-                yield result
-        elif action == "排名":
-            async for result in self._do_ranking(event, args):
-                yield result
-        elif action == "词性":
-            async for result in self._do_pos_analysis(event, args):
-                yield result
-        elif action == "热词":
-            async for result in self._do_trend(event, args):
-                yield result
-        elif action == "画像":
-            async for result in self._do_profile(event, args):
-                yield result
-        elif action == "我的":
-            async for result in self._do_my_style(event, args):
-                yield result
-        elif action == "词典":
-            async for result in self._do_dict(event, args):
-                yield result
-        elif action == "定时":
-            async for result in self._do_schedule(event, args):
-                yield result
-        elif action == "形状":
-            async for result in self._do_mask(event, args):
-                yield result
+        try:
+            text = event.message_str.strip()
+            args = self._parse_args(text)
+            action = args["action"]
+            if action == "wordcloud":
+                async for result in self._do_wordcloud(event, args):
+                    yield result
+            elif action == "排名":
+                async for result in self._do_ranking(event, args):
+                    yield result
+            elif action == "词性":
+                async for result in self._do_pos_analysis(event, args):
+                    yield result
+            elif action == "热词":
+                async for result in self._do_trend(event, args):
+                    yield result
+            elif action == "画像":
+                async for result in self._do_profile(event, args):
+                    yield result
+            elif action == "我的":
+                async for result in self._do_my_style(event, args):
+                    yield result
+            elif action == "词典":
+                async for result in self._do_dict(event, args):
+                    yield result
+            elif action == "定时":
+                async for result in self._do_schedule(event, args):
+                    yield result
+            elif action == "形状":
+                async for result in self._do_mask(event, args):
+                    yield result
+        finally:
+            event.stop_event()
 
     async def _schedule_loop(self):
         last_sent_date: dict[str, str] = {}

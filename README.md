@@ -125,7 +125,6 @@
 | `wordcloud_font_file` | 文件 | - | 自定义字体文件（上传） |
 | `wordcloud_stopwords_file` | 文件 | - | 自定义停用词表（上传） |
 | `wordcloud_user_dict_file` | 文件 | - | 自定义用户词典（上传） |
-| `wordcloud_pos_whitelist` | 文本 | `n,nr,ns,nt,nz,v,vd,vn,a,ad,an,d` | 参与词云的词性列表 |
 | `wordcloud_ranking_limit` | 数字 | `10` | 排名显示的最大人数 |
 | `wordcloud_ranking_show_percentage` | 开关 | `true` | 排名是否显示百分比 |
 | `wordcloud_pos_noun_colormap` | 选项 | `Blues` | 名词词云颜色方案 |

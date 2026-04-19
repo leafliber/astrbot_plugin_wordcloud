@@ -151,6 +151,10 @@ class SegEngine:
         self._group_segs.clear()
 
 
+_JIEBA_POS_WHITELIST = {"n", "nr", "ns", "nt", "nz", "v", "vd", "vn", "a", "ad", "an", "d"}
+_PKUSEG_POS_WHITELIST = {"n", "v", "a", "d", "i", "j", "l", "nz", "nr", "ns", "nt"}
+
+
 def analyse_message(
     messages: list,
     seg_engine: SegEngine,
@@ -159,7 +163,10 @@ def analyse_message(
     pos_filter: Optional[str] = None,
 ) -> Counter:
     word_counter: Counter = Counter()
-    pos_whitelist = config.pos_whitelist
+    if seg_engine.engine_type == "jieba":
+        pos_whitelist = _JIEBA_POS_WHITELIST
+    else:
+        pos_whitelist = _PKUSEG_POS_WHITELIST
     min_len = config.min_word_length
     stopwords = seg_engine._stopwords
 

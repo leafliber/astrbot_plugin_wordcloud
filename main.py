@@ -538,6 +538,7 @@ class WordCloudPlugin(Star):
 
     @filter.command("词云")
     async def wordcloud(self, event: AstrMessageEvent):
+        event.stop_event()
         text = event.message_str.strip()
         args = self._parse_args(text)
         action = args["action"]

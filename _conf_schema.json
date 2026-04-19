@@ -65,12 +65,6 @@
     "hint": "上传 pkuseg 用户词典，用于添加领域专有词汇（格式：词语 词性，每行一个）",
     "file_types": ["txt"]
   },
-  "wordcloud_pos_whitelist": {
-    "type": "string",
-    "description": "词性白名单",
-    "default": "n,nr,ns,nt,nz,v,vd,vn,a,ad,an,d",
-    "hint": "参与词云的词性列表（逗号分隔），留空则不过滤词性"
-  },
   "wordcloud_ranking_limit": {
     "type": "int",
     "description": "排名显示人数",

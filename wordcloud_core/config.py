@@ -114,13 +114,6 @@ class Config:
         return ""
 
     @property
-    def pos_whitelist(self) -> set:
-        raw = self.get("wordcloud_pos_whitelist", "n,nr,ns,nt,nz,v,vd,vn,a,ad,an,d")
-        if not raw:
-            return set()
-        return {p.strip() for p in raw.split(",") if p.strip()}
-
-    @property
     def ranking_limit(self) -> int:
         return self.get("wordcloud_ranking_limit", 10)
 

@@ -151,8 +151,8 @@ class SegEngine:
         self._group_segs.clear()
 
 
-_JIEBA_POS_WHITELIST = {"n", "nr", "ns", "nt", "nz", "v", "vd", "vn", "a", "ad", "an", "d"}
-_PKUSEG_POS_WHITELIST = {"n", "v", "a", "d", "i", "j", "l", "nz", "nr", "ns", "nt"}
+_JIEBA_POS_WHITELIST = {"n", "nr", "ns", "nt", "nz", "v", "vd", "vn", "vx", "a", "ad", "an", "d", "z", "b", "i", "j", "l"}
+_PKUSEG_POS_WHITELIST = {"n", "v", "a", "d", "i", "j", "l", "z", "b", "nr", "ns", "nt", "nz", "vd", "vn", "vx", "ad", "an"}
 
 
 def analyse_message(

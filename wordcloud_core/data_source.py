@@ -218,10 +218,12 @@ def generate_wordcloud(
         return None
 
     font_path = config.font_path
-    if font_path is None:
-        logger.warning("[WordCloud] 字体路径为空，词云可能无法正确显示中文")
+    if not font_path or not os.path.isfile(font_path):
+        logger.error(f"[WordCloud] 字体不可用(font_path={font_path})，无法生成中文词云")
+        return None
 
     wc_kwargs = {
+        "font_path": font_path,
         "width": config.width,
         "height": config.height,
         "background_color": config.background_color,
@@ -229,9 +231,6 @@ def generate_wordcloud(
         "colormap": colormap or config.colormap,
         "collocations": False,
     }
-    
-    if font_path:
-        wc_kwargs["font_path"] = font_path
 
     if mask_image is not None:
         wc_kwargs["mask"] = mask_image

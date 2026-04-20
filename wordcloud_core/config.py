@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 from astrbot.api.star import StarTools
 from astrbot.api import logger
@@ -54,7 +55,7 @@ class Config:
         return self.get("wordcloud_colormap", "viridis")
 
     @property
-    def font_path(self) -> str:
+    def font_path(self) -> Optional[str]:
         file_list = self.get("wordcloud_font_file", [])
         if file_list and isinstance(file_list, list) and len(file_list) > 0:
             path = file_list[0]
@@ -65,12 +66,12 @@ class Config:
         if custom and os.path.isfile(custom):
             logger.debug(f"[WordCloud] 使用自定义字体: {custom}")
             return custom
-        
+
         default_font = os.path.join(_PLUGIN_DIR, "fonts", "HarmonyOS_Sans_SC_Regular.ttf")
         if os.path.isfile(default_font):
             logger.debug(f"[WordCloud] 使用默认字体: {default_font}")
             return default_font
-        
+
         logger.warning(f"[WordCloud] 默认字体不存在: {default_font}，尝试系统字体")
         system_fonts = [
             "/System/Library/Fonts/PingFang.ttc",
@@ -80,13 +81,15 @@ class Config:
             "C:\\Windows\\Fonts\\simhei.ttf",
             "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         ]
         for sys_font in system_fonts:
             if os.path.isfile(sys_font):
                 logger.info(f"[WordCloud] 使用系统字体: {sys_font}")
                 return sys_font
-        
-        logger.error("[WordCloud] 未找到任何可用字体，词云可能无法正确显示中文")
+
+        logger.error("[WordCloud] 未找到任何可用字体，词云将无法显示中文")
         return None
 
     @property

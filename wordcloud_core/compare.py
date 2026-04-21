@@ -246,77 +246,65 @@ def _calculate_similarity(user1: UserStats, user2: UserStats) -> float:
 
 
 def format_compare_result(result: CompareResult) -> str:
+    n1 = result.user1.sender_name[:6]
+    n2 = result.user2.sender_name[:6]
     lines = [
-        f"对比分析 — {result.period}",
+        f"📊 {result.period} 对比分析",
         "",
-        f"👤 {result.user1.sender_name} vs {result.user2.sender_name}",
-        f"📊 相似度: {result.similarity_score}%",
+        f"👤 {result.user1.sender_name} ⚔️ {result.user2.sender_name}",
+        f"🎯 相似度: {result.similarity_score}%",
         "",
-        "━" * 20 + " 基础数据 " + "━" * 20,
-        "",
-        f"  {'指标':<12} {result.user1.sender_name:<12} {result.user2.sender_name:<12}",
-        f"  {'发言数':<12} {result.user1.message_count:<12} {result.user2.message_count:<12}",
-        f"  {'平均长度':<12} {result.user1.avg_message_length} 字{'':<8} {result.user2.avg_message_length} 字",
-        f"  {'词汇丰富度':<12} {result.user1.vocabulary_richness:.1%}{'':<8} {result.user2.vocabulary_richness:.1%}",
+        "📋 基础数据",
+        f"  发言数: {result.user1.message_count} vs {result.user2.message_count}",
+        f"  平均长度: {result.user1.avg_message_length}字 vs {result.user2.avg_message_length}字",
+        f"  词汇丰富度: {result.user1.vocabulary_richness:.0%} vs {result.user2.vocabulary_richness:.0%}",
     ]
 
-    peak1 = ", ".join(f"{h}:00" for h in result.user1.peak_hours[:3]) if result.user1.peak_hours else "暂无"
-    peak2 = ", ".join(f"{h}:00" for h in result.user2.peak_hours[:3]) if result.user2.peak_hours else "暂无"
-    lines.append(f"  {'活跃时段':<12} {peak1:<12} {peak2:<12}")
+    if result.user1.peak_hours or result.user2.peak_hours:
+        peak1 = "、".join(f"{h}点" for h in result.user1.peak_hours[:3]) if result.user1.peak_hours else "暂无"
+        peak2 = "、".join(f"{h}点" for h in result.user2.peak_hours[:3]) if result.user2.peak_hours else "暂无"
+        lines.append(f"  活跃时段: {peak1} vs {peak2}")
 
+    tags1 = " ".join(result.user1.style_tags) if result.user1.style_tags else "均衡型"
+    tags2 = " ".join(result.user2.style_tags) if result.user2.style_tags else "均衡型"
     lines.extend([
         "",
-        "━" * 20 + " 风格标签 " + "━" * 20,
-        "",
-        f"  {result.user1.sender_name}: {' | '.join(result.user1.style_tags) if result.user1.style_tags else '均衡型'}",
-        f"  {result.user2.sender_name}: {' | '.join(result.user2.style_tags) if result.user2.style_tags else '均衡型'}",
+        "🏷️ 风格标签",
+        f"  {n1}: {tags1}",
+        f"  {n2}: {tags2}",
     ])
 
     if result.style_similarity:
-        lines.append(f"  🤝 共同标签: {' | '.join(result.style_similarity)}")
+        lines.append(f"  🤝 共同: {' '.join(result.style_similarity)}")
     if result.style_difference:
-        lines.append(f"  ⚡ 差异标签: {' | '.join(result.style_difference)}")
+        lines.append(f"  ⚡ 差异: {' '.join(result.style_difference)}")
 
-    lines.extend([
-        "",
-        "━" * 20 + " 词性对比 " + "━" * 20,
-        "",
-    ])
-
-    pos_labels = {
-        "n": "名词", "v": "动词", "a": "形容词", "d": "副词",
-        "nr": "人名", "ns": "地名", "nt": "机构名",
-    }
-    for pos in ["n", "v", "a", "d"]:
-        if pos in result.pos_comparison:
-            p1, p2 = result.pos_comparison[pos]
-            label = pos_labels.get(pos, pos)
-            bar1 = "█" * int(p1 * 20)
-            bar2 = "█" * int(p2 * 20)
-            lines.append(f"  {label}:")
-            lines.append(f"    {result.user1.sender_name}: {bar1} {p1:.1%}")
-            lines.append(f"    {result.user2.sender_name}: {bar2} {p2:.1%}")
+    if result.pos_comparison:
+        lines.extend(["", "📝 词性对比"])
+        pos_labels = {"n": "名词", "v": "动词", "a": "形容词", "d": "副词"}
+        for pos in ["n", "v", "a", "d"]:
+            if pos in result.pos_comparison:
+                p1, p2 = result.pos_comparison[pos]
+                label = pos_labels.get(pos, pos)
+                bar_len = 10
+                b1 = "▓" * int(p1 * bar_len) + "░" * (bar_len - int(p1 * bar_len))
+                b2 = "▓" * int(p2 * bar_len) + "░" * (bar_len - int(p2 * bar_len))
+                lines.append(f"  {label}")
+                lines.append(f"    {n1} {b1} {p1:.0%}")
+                lines.append(f"    {n2} {b2} {p2:.0%}")
 
     if result.common_words:
-        lines.extend([
-            "",
-            "━" * 20 + " 共同高频词 " + "━" * 20,
-            "",
-        ])
+        lines.extend(["", "🔤 共同高频词"])
         for word, c1, c2 in result.common_words[:5]:
-            lines.append(f"  • {word}: {result.user1.sender_name}({c1}) vs {result.user2.sender_name}({c2})")
+            lines.append(f"  {word}: {c1} vs {c2}")
 
     if result.unique_words_1 or result.unique_words_2:
-        lines.extend([
-            "",
-            "━" * 20 + " 独特词汇 " + "━" * 20,
-            "",
-        ])
+        lines.extend(["", "💎 独特词汇"])
         if result.unique_words_1:
-            words1 = ", ".join(f"{w}({c})" for w, c in result.unique_words_1)
-            lines.append(f"  🔵 {result.user1.sender_name}独有: {words1}")
+            words1 = " ".join(f"{w}({c})" for w, c in result.unique_words_1)
+            lines.append(f"  {n1}: {words1}")
         if result.unique_words_2:
-            words2 = ", ".join(f"{w}({c})" for w, c in result.unique_words_2)
-            lines.append(f"  🟢 {result.user2.sender_name}独有: {words2}")
+            words2 = " ".join(f"{w}({c})" for w, c in result.unique_words_2)
+            lines.append(f"  {n2}: {words2}")
 
     return "\n".join(lines)

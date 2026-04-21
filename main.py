@@ -25,6 +25,7 @@ from wordcloud_core.profile import (
     build_group_profile, build_personal_style,
     format_group_profile, format_personal_style,
 )
+from wordcloud_core.compare import compare_users, format_compare_result
 from wordcloud_core.dict_manager import DictManager
 from wordcloud_core.mask_manager import MaskManager
 from wordcloud_core.scheduler import add_schedule, remove_schedule, get_all_schedules
@@ -463,6 +464,58 @@ class WordCloudPlugin(Star):
                 return
             self._mask_manager.save_mask(image_data, group_key)
             yield event.plain_result("已设置群级词云形状")
+
+    @filter.command("比较词云", alias={"对比", "比较"})
+    async def cmd_compare(self, event: AstrMessageEvent):
+        event.should_call_llm(True)
+        err = self._check_ready()
+        if err:
+            yield event.plain_result(err)
+            return
+        err = self._require_group(event)
+        if err:
+            yield event.plain_result(err)
+            return
+
+        mentioned_users = []
+        for comp in (event.message_obj.message or []):
+            comp_type = type(comp).__name__
+            if comp_type == "At":
+                user_id = getattr(comp, "qq", None) or getattr(comp, "user_id", None)
+                if user_id:
+                    mentioned_users.append(str(user_id))
+
+        if len(mentioned_users) < 2:
+            yield event.plain_result("请 @ 两位用户进行比较，例如：比较词云 @用户A @用户B")
+            return
+
+        sender_id_1 = mentioned_users[0]
+        sender_id_2 = mentioned_users[1]
+
+        text = event.message_str.strip()
+        time_kw, period_name = parse_time_kw(text)
+        group_key = self._get_group_key(event)
+        group_id = event.message_obj.group_id or None
+
+        messages = await self._get_messages(event, time_kw, group_id)
+        if not messages:
+            yield event.plain_result(f"{period_name}暂无消息记录")
+            return
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            self._executor,
+            lambda: compare_users(
+                messages, sender_id_1, sender_id_2,
+                self._seg_engine, self._config, group_key, period_name
+            ),
+        )
+
+        if result is None:
+            yield event.plain_result("未找到被 @ 用户的发言记录")
+            return
+
+        yield event.plain_result(format_compare_result(result))
 
     async def _schedule_loop(self):
         last_sent_date: dict[str, str] = {}

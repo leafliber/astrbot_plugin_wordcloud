@@ -485,12 +485,18 @@ class WordCloudPlugin(Star):
                 if user_id:
                     mentioned_users.append(str(user_id))
 
-        if len(mentioned_users) < 2:
-            yield event.plain_result("请 @ 两位用户进行比较，例如：比较词云 @用户A @用户B")
+        my_sender_id = event.get_sender_id()
+
+        if len(mentioned_users) == 0:
+            yield event.plain_result("请 @ 一位或两位用户进行比较，例如：比较词云 @用户A 或 比较词云 @用户A @用户B")
             return
 
-        sender_id_1 = mentioned_users[0]
-        sender_id_2 = mentioned_users[1]
+        if len(mentioned_users) == 1:
+            sender_id_1 = mentioned_users[0]
+            sender_id_2 = my_sender_id
+        else:
+            sender_id_1 = mentioned_users[0]
+            sender_id_2 = mentioned_users[1]
 
         text = event.message_str.strip()
         time_kw, period_name = parse_time_kw(text)

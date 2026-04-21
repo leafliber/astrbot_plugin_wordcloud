@@ -247,7 +247,7 @@ def _calculate_similarity(user1: UserStats, user2: UserStats) -> float:
 
 def format_compare_result(result: CompareResult) -> str:
     lines = [
-        f"⚔️ 用户对比分析 — {result.period}",
+        f"对比分析 — {result.period}",
         "",
         f"👤 {result.user1.sender_name} vs {result.user2.sender_name}",
         f"📊 相似度: {result.similarity_score}%",

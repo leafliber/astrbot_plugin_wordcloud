@@ -46,10 +46,10 @@ class ParsedArgs:
 
 
 def parse_time_kw(text: str) -> tuple:
-    for word in text.split():
-        if word in _TIME_KEYWORDS:
-            return _TIME_KEYWORDS[word]
-    return ("today", "今日")
+    for cn, val in _TIME_KEYWORDS.items():
+        if cn in text:
+            return val
+    return (None, None)
 
 
 def parse_pos_kw(text: str) -> tuple:
@@ -59,8 +59,10 @@ def parse_pos_kw(text: str) -> tuple:
     return (None, None)
 
 
-def parse_common_args(text: str) -> ParsedArgs:
+def parse_common_args(text: str, default_time: str = "today", default_name: str = "今日") -> ParsedArgs:
     time_kw, period_name = parse_time_kw(text)
+    if time_kw is None:
+        time_kw, period_name = default_time, default_name
     pos_filter, pos_name = parse_pos_kw(text)
     return ParsedArgs(
         time_kw=time_kw,

@@ -223,8 +223,10 @@ class WordCloudPlugin(Star):
             return
         text = event.message_str.strip()
         time_kw, period_name = parse_time_kw(text)
+        if time_kw is None:
+            time_kw, period_name = "today", "今日"
         group_id = event.message_obj.group_id or None
-        messages = await self._get_messages(event, time_kw, group_id)
+        messages = await self._get_messages(event, time_kw, group_id, sender_id)
         ranking = compute_ranking(messages, self._config.ranking_limit, self._config.ranking_show_percentage)
         yield event.plain_result(format_ranking(ranking, period_name))
 
@@ -237,6 +239,8 @@ class WordCloudPlugin(Star):
             return
         text = event.message_str.strip()
         time_kw, period_name = parse_time_kw(text)
+        if time_kw is None:
+            time_kw, period_name = "today", "今日"
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, time_kw, group_id)
@@ -259,6 +263,8 @@ class WordCloudPlugin(Star):
             return
         text = event.message_str.strip()
         time_kw, period_name = parse_time_kw(text)
+        if time_kw is None:
+            time_kw, period_name = "this_month", "本月"
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         prev_map = {
@@ -302,6 +308,8 @@ class WordCloudPlugin(Star):
             return
         text = event.message_str.strip()
         time_kw, period_name = parse_time_kw(text)
+        if time_kw is None:
+            time_kw, period_name = "this_month", "本月"
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, time_kw, group_id)
@@ -327,10 +335,12 @@ class WordCloudPlugin(Star):
             return
         text = event.message_str.strip()
         time_kw, period_name = parse_time_kw(text)
+        if time_kw is None:
+            time_kw, period_name = "this_month", "本月"
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
         sender_id = event.message_obj.sender.user_id if event.message_obj.sender else ""
-        messages = await self._get_messages(event, time_kw, group_id)
+        messages = await self._get_messages(event, time_kw, group_id, sender_id)
         if not messages:
             yield event.plain_result(f"{period_name}暂无消息记录")
             return
@@ -500,6 +510,8 @@ class WordCloudPlugin(Star):
 
         text = event.message_str.strip()
         time_kw, period_name = parse_time_kw(text)
+        if time_kw is None:
+            time_kw, period_name = "this_month", "本月"
         group_key = self._get_group_key(event)
         group_id = event.message_obj.group_id or None
 

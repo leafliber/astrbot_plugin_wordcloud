@@ -5,16 +5,21 @@ from typing import Optional
 _TIME_KEYWORDS = {
     "今日": "today",
     "今天": "today",
+    "今": "today",
     "昨日": "yesterday",
     "昨天": "yesterday",
+    "昨": "yesterday",
     "本周": "this_week",
     "这周": "this_week",
+    "本星期": "this_week",
     "上周": "last_week",
+    "上星期": "last_week",
     "本月": "this_month",
     "这个月": "this_month",
     "上月": "last_month",
     "上个月": "last_month",
     "今年": "this_year",
+    "本年度": "this_year",
     "年度": "this_year",
 }
 

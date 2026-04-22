@@ -152,5 +152,11 @@
     "description": "风格标签-名词占比阈值",
     "default": 0.40,
     "hint": "个人名词占比超过此值（40%）标记为「知识分享者」"
+  },
+  "wordcloud_markdown_optimize": {
+    "type": "bool",
+    "description": "Markdown 优化",
+    "default": true,
+    "hint": "开启后，当 AstrBot 启用文转图(t2i)功能时，自动优化长文本的 Markdown 格式，确保换行正确渲染"
   }
 }

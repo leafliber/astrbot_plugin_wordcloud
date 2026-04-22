@@ -33,6 +33,7 @@ from wordcloud_core.commands import (
     _MR_TIME_MAP, _COLORMAP_MAP,
     parse_time_kw, parse_pos_kw, parse_common_args,
 )
+from wordcloud_core.markdown_optimizer import T2IConfigReader, MarkdownOptimizer
 
 
 @register(
@@ -54,6 +55,8 @@ class WordCloudPlugin(Star):
         self._schedule_task: Optional[asyncio.Task] = None
         self._api_retry_count: int = 0
         self._api_max_retry: int = 5
+        self._t2i_reader: Optional[T2IConfigReader] = None
+        self._md_optimizer: Optional[MarkdownOptimizer] = None
 
     def _check_ready(self) -> Optional[str]:
         if not self._seg_engine.ready:
@@ -114,8 +117,27 @@ class WordCloudPlugin(Star):
     async def initialize(self):
         asyncio.create_task(self._bg_init_seg_engine())
         asyncio.create_task(self._bg_init_recorder_api())
+        self._init_markdown_optimizer()
         logger.info("[WordCloud] 插件初始化完成（后台加载中）")
         self._schedule_task = asyncio.create_task(self._schedule_loop())
+
+    def _init_markdown_optimizer(self):
+        try:
+            self._t2i_reader = T2IConfigReader(self.context)
+            self._md_optimizer = MarkdownOptimizer(self._t2i_reader)
+            logger.debug("[WordCloud] Markdown 优化器初始化完成")
+        except Exception as e:
+            logger.warning(f"[WordCloud] Markdown 优化器初始化失败: {e}")
+
+    def _optimize_text_for_output(self, text: str) -> str:
+        if not self._config.markdown_optimize:
+            return text
+        if self._md_optimizer is None or self._t2i_reader is None:
+            return text
+        threshold = self._t2i_reader.get_t2i_threshold()
+        if len(text) < threshold:
+            return text
+        return self._md_optimizer.optimize_for_t2i(text)
 
     async def _bg_init_seg_engine(self):
         try:
@@ -228,7 +250,7 @@ class WordCloudPlugin(Star):
         group_id = event.message_obj.group_id or None
         messages = await self._get_messages(event, time_kw, group_id, sender_id)
         ranking = compute_ranking(messages, self._config.ranking_limit, self._config.ranking_show_percentage)
-        yield event.plain_result(format_ranking(ranking, period_name))
+        yield event.plain_result(self._optimize_text_for_output(format_ranking(ranking, period_name)))
 
     @filter.command("词性分析", alias={"词性", "词类统计"})
     async def cmd_pos(self, event: AstrMessageEvent):
@@ -252,7 +274,7 @@ class WordCloudPlugin(Star):
             self._executor,
             lambda: analyze_pos_distribution(messages, self._seg_engine, self._config, group_key),
         )
-        yield event.plain_result(format_pos_report(pos_dist, period_name))
+        yield event.plain_result(self._optimize_text_for_output(format_pos_report(pos_dist, period_name)))
 
     @filter.command("热词趋势", alias={"热词", "趋势", "涨跌"})
     async def cmd_trend(self, event: AstrMessageEvent):
@@ -297,7 +319,7 @@ class WordCloudPlugin(Star):
             emerging_limit=self._config.trend_emerging_limit,
             declining_limit=self._config.trend_declining_limit,
         )
-        yield event.plain_result(format_trend_report(trend, period_name, prev_name))
+        yield event.plain_result(self._optimize_text_for_output(format_trend_report(trend, period_name, prev_name)))
 
     @filter.command("群画像", alias={"画像", "群聊画像", "群体画像"})
     async def cmd_profile(self, event: AstrMessageEvent):
@@ -324,7 +346,7 @@ class WordCloudPlugin(Star):
         if profile is None:
             yield event.plain_result("画像生成失败")
             return
-        yield event.plain_result(format_group_profile(profile))
+        yield event.plain_result(self._optimize_text_for_output(format_group_profile(profile)))
 
     @filter.command("我的画像", alias={"我的", "个人画像", "我的风格"})
     async def cmd_my_style(self, event: AstrMessageEvent):
@@ -352,7 +374,7 @@ class WordCloudPlugin(Star):
         if style is None:
             yield event.plain_result("未找到你的发言记录")
             return
-        yield event.plain_result(format_personal_style(style))
+        yield event.plain_result(self._optimize_text_for_output(format_personal_style(style)))
 
     @filter.command("词云词典", alias={"词典", "自定义词"})
     async def cmd_dict(self, event: AstrMessageEvent):
@@ -533,7 +555,7 @@ class WordCloudPlugin(Star):
             yield event.plain_result("未找到被 @ 用户的发言记录")
             return
 
-        yield event.plain_result(format_compare_result(result))
+        yield event.plain_result(self._optimize_text_for_output(format_compare_result(result)))
 
     async def _schedule_loop(self):
         last_sent_date: dict[str, str] = {}

@@ -173,6 +173,10 @@ class Config:
         return self.get("wordcloud_style_noun_threshold", 0.40)
 
     @property
+    def markdown_optimize(self) -> bool:
+        return self.get("wordcloud_markdown_optimize", True)
+
+    @property
     def data_dir(self) -> str:
         return _get_data_dir()
 

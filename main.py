@@ -248,7 +248,7 @@ class WordCloudPlugin(Star):
         if time_kw is None:
             time_kw, period_name = "today", "今日"
         group_id = event.message_obj.group_id or None
-        messages = await self._get_messages(event, time_kw, group_id, sender_id)
+        messages = await self._get_messages(event, time_kw, group_id)
         ranking = compute_ranking(messages, self._config.ranking_limit, self._config.ranking_show_percentage)
         yield event.plain_result(self._optimize_text_for_output(format_ranking(ranking, period_name)))
 

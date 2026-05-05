@@ -63,7 +63,7 @@ def build_user_stats(
     total_words = 0
     unique_words: set[str] = set()
     min_len = config.min_word_length
-    stopwords = seg_engine._stopwords
+    stopwords = seg_engine.get_stopwords(group_key)
 
     for msg in filtered:
         text = msg.message_str if hasattr(msg, "message_str") else str(msg)

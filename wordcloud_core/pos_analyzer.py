@@ -34,7 +34,7 @@ def analyze_pos_distribution(
     pos_counter: Counter = Counter()
     total = 0
     min_len = config.min_word_length
-    stopwords = seg_engine._stopwords
+    stopwords = seg_engine.get_stopwords(group_key)
 
     for msg in messages:
         text = msg.message_str if hasattr(msg, "message_str") else str(msg)

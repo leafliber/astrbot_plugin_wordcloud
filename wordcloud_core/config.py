@@ -191,3 +191,9 @@ class Config:
         d = os.path.join(_get_data_dir(), "dicts")
         os.makedirs(d, exist_ok=True)
         return d
+
+    @property
+    def stopwords_dir(self) -> str:
+        d = os.path.join(_get_data_dir(), "stopwords")
+        os.makedirs(d, exist_ok=True)
+        return d

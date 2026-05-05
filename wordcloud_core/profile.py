@@ -53,7 +53,7 @@ def build_group_profile(
     total_words = 0
     unique_words: set[str] = set()
     min_len = config.min_word_length
-    stopwords = seg_engine._stopwords
+    stopwords = seg_engine.get_stopwords(group_key)
 
     for msg in messages:
         sender_id = msg.sender_id if hasattr(msg, "sender_id") else ""
@@ -148,7 +148,7 @@ def build_personal_style(
     total_words = 0
     unique_words: set[str] = set()
     min_len = config.min_word_length
-    stopwords = seg_engine._stopwords
+    stopwords = seg_engine.get_stopwords(group_key)
 
     for msg in filtered:
         text = msg.message_str if hasattr(msg, "message_str") else str(msg)

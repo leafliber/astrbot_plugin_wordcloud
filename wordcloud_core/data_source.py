@@ -54,6 +54,7 @@ class SegEngine:
         self._seg = None
         self._stopwords: set = set()
         self._group_segs: dict = {}
+        self._group_stopwords: dict = {}
         self._ready: bool = False
         self._engine_type: str = "none"
 
@@ -102,11 +103,20 @@ class SegEngine:
                 self._seg = None
                 self._engine_type = "none"
                 self._stopwords = _load_stopwords(self._config.stopwords_path)
+                custom_path = os.path.join(self._config.stopwords_dir, "custom-stopwords.txt")
+                self._stopwords |= _load_stopwords(custom_path)
                 self._ready = True
                 return
 
         self._stopwords = _load_stopwords(self._config.stopwords_path)
+        custom_path = os.path.join(self._config.stopwords_dir, "custom-stopwords.txt")
+        self._stopwords |= _load_stopwords(custom_path)
         self._ready = True
+
+    def reload_stopwords(self):
+        self._stopwords = _load_stopwords(self._config.stopwords_path)
+        custom_path = os.path.join(self._config.stopwords_dir, "custom-stopwords.txt")
+        self._stopwords |= _load_stopwords(custom_path)
 
     def get_seg(self, group_key: Optional[str] = None):
         if group_key is None:
@@ -140,6 +150,16 @@ class SegEngine:
 
     def invalidate_group_cache(self, group_key: str):
         self._group_segs.pop(group_key, None)
+        self._group_stopwords.pop(group_key, None)
+
+    def get_stopwords(self, group_key: Optional[str] = None) -> set:
+        result = set(self._stopwords)
+        if group_key and group_key in self._group_stopwords:
+            result |= self._group_stopwords[group_key]
+        return result
+
+    def set_group_stopwords(self, group_key: str, stopwords: set):
+        self._group_stopwords[group_key] = stopwords
 
     def cut(self, text: str, group_key: Optional[str] = None) -> list[tuple[str, str]]:
         seg = self.get_seg(group_key)
@@ -178,7 +198,7 @@ def analyse_message(
     else:
         pos_whitelist = None
     min_len = config.min_word_length
-    stopwords = seg_engine._stopwords
+    stopwords = seg_engine.get_stopwords(group_key)
 
     for msg in messages:
         text = msg.message_str if hasattr(msg, "message_str") else str(msg)

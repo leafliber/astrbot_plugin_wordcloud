@@ -27,6 +27,7 @@ from wordcloud_core.profile import (
 )
 from wordcloud_core.compare import compare_users, format_compare_result
 from wordcloud_core.dict_manager import DictManager
+from wordcloud_core.stopword_manager import StopwordManager
 from wordcloud_core.mask_manager import MaskManager
 from wordcloud_core.scheduler import add_schedule, remove_schedule, get_all_schedules
 from wordcloud_core.commands import (
@@ -49,6 +50,7 @@ class WordCloudPlugin(Star):
         self._config = Config(config)
         self._seg_engine = SegEngine(self._config)
         self._dict_manager = DictManager(self._config)
+        self._stopword_manager = StopwordManager(self._config)
         self._mask_manager = MaskManager(self._config)
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._mr_api = None
@@ -422,6 +424,83 @@ class WordCloudPlugin(Star):
             lines = ["📋 群级词典内容:", ""]
             for w in words_list:
                 lines.append(f"  • {w}")
+            yield event.plain_result("\n".join(lines))
+
+    @filter.command("词云停用词", alias={"停用词", "屏蔽词"})
+    async def cmd_stopwords(self, event: AstrMessageEvent):
+        event.should_call_llm(True)
+        text = event.message_str.strip()
+        words = text.split()
+        op = None
+        word = None
+        scope = None
+        for w in words[1:]:
+            if w in ("添加", "删除"):
+                op = w
+            elif w in ("全局", "分群", "群"):
+                scope = w
+            elif word is None:
+                word = w
+        if op == "添加":
+            if not word:
+                yield event.plain_result("请指定要添加的停用词")
+                return
+            group_key = None
+            if scope != "全局":
+                err = self._require_group(event)
+                if err:
+                    yield event.plain_result("分群停用词仅限群聊使用，或使用「词云停用词 添加 全局 <词语>」添加全局停用词")
+                    return
+                group_key = self._get_group_key(event)
+            self._stopword_manager.add_word(word, group_key)
+            if group_key:
+                group_stopwords = self._stopword_manager.load_group_stopwords(group_key)
+                self._seg_engine.set_group_stopwords(group_key, group_stopwords)
+            else:
+                self._seg_engine.reload_stopwords()
+            scope_text = "全局" if not group_key else "本群"
+            yield event.plain_result(f"已添加{scope_text}停用词「{word}」")
+        elif op == "删除":
+            if not word:
+                yield event.plain_result("请指定要删除的停用词")
+                return
+            group_key = None
+            if scope != "全局":
+                err = self._require_group(event)
+                if err:
+                    yield event.plain_result("分群停用词仅限群聊使用，或使用「词云停用词 删除 全局 <词语>」删除全局停用词")
+                    return
+                group_key = self._get_group_key(event)
+            if self._stopword_manager.remove_word(word, group_key):
+                if group_key:
+                    group_stopwords = self._stopword_manager.load_group_stopwords(group_key)
+                    self._seg_engine.set_group_stopwords(group_key, group_stopwords)
+                else:
+                    self._seg_engine.reload_stopwords()
+                scope_text = "全局" if not group_key else "本群"
+                yield event.plain_result(f"已删除{scope_text}停用词「{word}」")
+            else:
+                scope_text = "全局" if not group_key else "本群"
+                yield event.plain_result(f"{scope_text}停用词中未找到「{word}」")
+        else:
+            lines = []
+            global_words = self._stopword_manager.list_words()
+            if global_words:
+                lines.append("📋 全局自定义停用词:")
+                for w in global_words:
+                    lines.append(f"  • {w}")
+            group_key = self._get_group_key(event)
+            if group_key:
+                group_words = self._stopword_manager.list_words(group_key)
+                if group_words:
+                    if lines:
+                        lines.append("")
+                    lines.append("📋 本群停用词:")
+                    for w in group_words:
+                        lines.append(f"  • {w}")
+            if not lines:
+                yield event.plain_result("暂无自定义停用词（使用「词云停用词 添加 <词语>」添加）")
+                return
             yield event.plain_result("\n".join(lines))
 
     @filter.command("词云定时", alias={"定时", "定时任务", "自动词云"})
